@@ -141,7 +141,9 @@ button.icon-btn { width: 36px; height: 36px; padding: 0; }
 .overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.85); display: flex; align-items: center; justify-content: center; z-index: 10; }
 .overlay img { max-width: 96vw; max-height: 96vh; }
 
-.swipe-wrap { position: relative; margin-bottom: 10px; }
+.swipe-wrap {
+  /* 削除ボタンの端がカード外に覗かないように横だけクリップ（タブの縦はみ出しは残す） */
+  overflow-x: clip; position: relative; margin-bottom: 10px; }
 .swipe-wrap .card { margin-bottom: 0; position: relative; user-select: none; }
 /* フォルダ群の最後のカード直後にあるメモカードにだけ8pxを足し、直前の10pxと合わせて section間18pxにする */
 .swipe-wrap:has(.folder-card) + .swipe-wrap:not(:has(.folder-card)) { margin-top: 8px; }
@@ -219,3 +221,6 @@ button.icon-btn { width: 36px; height: 36px; padding: 0; }
   .view-transition { animation: none; }
   .dot.syncing { animation: none; }
 }
+
+/* インデックスタブの分だけフォルダカードの上に余白を確保（前のカードへの重なり防止） */
+.swipe-wrap:has(> .folder-card) { margin-top: 12px; overflow: visible; overflow-x: clip; }
