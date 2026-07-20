@@ -1,5 +1,5 @@
 import type { Env } from "./index";
-import type { AttachmentRecord, NoteRecord, SyncRequest, SyncResponse } from "./types";
+import type { AttachmentRecord, FolderRecord, NoteRecord, SyncRequest, SyncResponse } from "./types";
 
 async function isPurged(db: D1Database, id: string): Promise<boolean> {
   const row = await db.prepare(`SELECT 1 FROM purged WHERE id = ?1`).bind(id).first();
@@ -9,13 +9,14 @@ async function isPurged(db: D1Database, id: string): Promise<boolean> {
 export async function upsertNote(db: D1Database, n: NoteRecord): Promise<boolean> {
   if (await isPurged(db, n.id)) return false;
   await db.prepare(
-    `INSERT INTO notes (id, body, tags, importance, created_at, updated_at, deleted, received_at)
-     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+    `INSERT INTO notes (id, body, tags, importance, created_at, updated_at, deleted, received_at, folder_id)
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
      ON CONFLICT(id) DO UPDATE SET
        body = excluded.body, tags = excluded.tags, importance = excluded.importance,
-       updated_at = excluded.updated_at, deleted = excluded.deleted, received_at = excluded.received_at
+       updated_at = excluded.updated_at, deleted = excluded.deleted, received_at = excluded.received_at,
+       folder_id = excluded.folder_id
      WHERE excluded.updated_at > notes.updated_at`
-  ).bind(n.id, n.body, JSON.stringify(n.tags), n.importance, n.createdAt, n.updatedAt, n.deleted, Date.now()).run();
+  ).bind(n.id, n.body, JSON.stringify(n.tags), n.importance, n.createdAt, n.updatedAt, n.deleted, Date.now(), n.folderId ?? null).run();
   return true;
 }
 
@@ -32,8 +33,22 @@ export async function upsertAttachment(db: D1Database, a: AttachmentRecord): Pro
   return true;
 }
 
-type NoteRow = { id: string; body: string; tags: string; importance: number; created_at: number; updated_at: number; deleted: 0 | 1 };
+export async function upsertFolder(db: D1Database, f: FolderRecord): Promise<boolean> {
+  if (await isPurged(db, f.id)) return false;
+  await db.prepare(
+    `INSERT INTO folders (id, name, parent_id, created_at, updated_at, deleted, received_at)
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+     ON CONFLICT(id) DO UPDATE SET
+       name = excluded.name, parent_id = excluded.parent_id,
+       updated_at = excluded.updated_at, deleted = excluded.deleted, received_at = excluded.received_at
+     WHERE excluded.updated_at > folders.updated_at`
+  ).bind(f.id, f.name, f.parentId, f.createdAt, f.updatedAt, f.deleted, Date.now()).run();
+  return true;
+}
+
+type NoteRow = { id: string; body: string; tags: string; importance: number; created_at: number; updated_at: number; deleted: 0 | 1; folder_id: string | null };
 type AttRow = { id: string; note_id: string; mime: string; size: number; created_at: number; updated_at: number; deleted: 0 | 1 };
+type FolderRow = { id: string; name: string; parent_id: string | null; created_at: number; updated_at: number; deleted: 0 | 1 };
 
 export const TRASH_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 // 既知の限界: ゴミ箱保持30日＋このログ保持180日＝約210日以上同期しない端末には、
@@ -50,6 +65,9 @@ export async function purgeExpiredTrash(env: Env, now: number): Promise<void> {
   const expiredNotes = await env.DB.prepare(
     `SELECT id FROM notes WHERE deleted = 1 AND updated_at < ?1`
   ).bind(cutoff).all<{ id: string }>();
+  const expiredFolders = await env.DB.prepare(
+    `SELECT id FROM folders WHERE deleted = 1 AND updated_at < ?1`
+  ).bind(cutoff).all<{ id: string }>();
   for (const row of expiredAtt.results) {
     await env.ATT.delete(`att/${row.id}`);
     await env.DB.prepare(`INSERT OR REPLACE INTO purged (id, purged_at, kind) VALUES (?1, ?2, 'att')`).bind(row.id, now).run();
@@ -57,12 +75,16 @@ export async function purgeExpiredTrash(env: Env, now: number): Promise<void> {
   for (const row of expiredNotes.results) {
     await env.DB.prepare(`INSERT OR REPLACE INTO purged (id, purged_at, kind) VALUES (?1, ?2, 'note')`).bind(row.id, now).run();
   }
+  for (const row of expiredFolders.results) {
+    await env.DB.prepare(`INSERT OR REPLACE INTO purged (id, purged_at, kind) VALUES (?1, ?2, 'folder')`).bind(row.id, now).run();
+  }
   await env.DB.prepare(
     `DELETE FROM attachments
      WHERE (deleted = 1 AND updated_at < ?1)
         OR note_id IN (SELECT id FROM notes WHERE deleted = 1 AND updated_at < ?1)`
   ).bind(cutoff).run();
   await env.DB.prepare(`DELETE FROM notes WHERE deleted = 1 AND updated_at < ?1`).bind(cutoff).run();
+  await env.DB.prepare(`DELETE FROM folders WHERE deleted = 1 AND updated_at < ?1`).bind(cutoff).run();
   await env.DB.prepare(`DELETE FROM purged WHERE purged_at < ?1`).bind(now - PURGED_LOG_RETENTION_MS).run();
 }
 
@@ -77,18 +99,27 @@ export async function handleSync(req: Request, env: Env): Promise<Response> {
   for (const a of body.attachments ?? []) {
     if (!(await upsertAttachment(env.DB, a))) purgedIds.push(a.id);
   }
+  for (const f of body.folders ?? []) {
+    if (!(await upsertFolder(env.DB, f))) purgedIds.push(f.id);
+  }
   const noteRows = await env.DB.prepare(`SELECT * FROM notes WHERE received_at > ?1`).bind(body.since).all<NoteRow>();
   const attRows = await env.DB.prepare(`SELECT * FROM attachments WHERE received_at > ?1`).bind(body.since).all<AttRow>();
-  const purgedRows = await env.DB.prepare(`SELECT id, purged_at FROM purged WHERE kind = 'note' AND purged_at > ?1`).bind(body.since).all<{ id: string; purged_at: number }>();
-  const noteStubs: NoteRecord[] = purgedRows.results.map((r) => ({
-    id: r.id, body: "", tags: [], importance: 0, createdAt: 0, updatedAt: r.purged_at, deleted: 1,
+  const folderRows = await env.DB.prepare(`SELECT * FROM folders WHERE received_at > ?1`).bind(body.since).all<FolderRow>();
+  const purgedRows = await env.DB.prepare(
+    `SELECT id, purged_at, kind FROM purged WHERE kind IN ('note', 'folder') AND purged_at > ?1`
+  ).bind(body.since).all<{ id: string; purged_at: number; kind: string }>();
+  const noteStubs: NoteRecord[] = purgedRows.results.filter((r) => r.kind === "note").map((r) => ({
+    id: r.id, body: "", tags: [], importance: 0, createdAt: 0, updatedAt: r.purged_at, deleted: 1, folderId: null,
+  }));
+  const folderStubs: FolderRecord[] = purgedRows.results.filter((r) => r.kind === "folder").map((r) => ({
+    id: r.id, name: "", parentId: null, createdAt: 0, updatedAt: r.purged_at, deleted: 1,
   }));
   const res: SyncResponse = {
     now,
     notes: [
       ...noteRows.results.map((r) => ({
         id: r.id, body: r.body, tags: JSON.parse(r.tags) as string[], importance: r.importance,
-        createdAt: r.created_at, updatedAt: r.updated_at, deleted: r.deleted,
+        createdAt: r.created_at, updatedAt: r.updated_at, deleted: r.deleted, folderId: r.folder_id,
       })),
       ...noteStubs,
     ],
@@ -96,6 +127,13 @@ export async function handleSync(req: Request, env: Env): Promise<Response> {
       id: r.id, noteId: r.note_id, mime: r.mime, size: r.size,
       createdAt: r.created_at, updatedAt: r.updated_at, deleted: r.deleted,
     })),
+    folders: [
+      ...folderRows.results.map((r) => ({
+        id: r.id, name: r.name, parentId: r.parent_id,
+        createdAt: r.created_at, updatedAt: r.updated_at, deleted: r.deleted,
+      })),
+      ...folderStubs,
+    ],
     purgedIds,
   };
   return Response.json(res);

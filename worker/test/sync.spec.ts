@@ -11,11 +11,16 @@ async function sync(body: unknown) {
   return SELF.fetch("https://example.com/api/sync", { method: "POST", headers: AUTH, body: JSON.stringify(body) });
 }
 
+function folder(over: Record<string, unknown> = {}) {
+  return { id: "01FOLDER", name: "仕事", parentId: null, createdAt: 100, updatedAt: 100, deleted: 0, ...over };
+}
+
 describe("/api/sync", () => {
   afterEach(async () => {
     await env.DB.prepare("DELETE FROM notes").run();
     await env.DB.prepare("DELETE FROM attachments").run();
     await env.DB.prepare("DELETE FROM purged").run();
+    await env.DB.prepare("DELETE FROM folders").run();
   });
 
   it("pushしたメモがpullで返る", async () => {
@@ -140,5 +145,51 @@ describe("/api/sync", () => {
       attachments: [],
     })).json() as any;
     expect(r.purgedIds).toContain("ZOMBIE2");
+  });
+
+  it("pushしたフォルダがpullで返る（name/parentIdが保たれる）", async () => {
+    const res1 = await sync({ since: 0, notes: [], attachments: [], folders: [folder({ id: "F1", name: "仕事", parentId: null })] });
+    expect(res1.status).toBe(200);
+    const data = await (await sync({ since: 0, notes: [], attachments: [], folders: [] })).json() as any;
+    expect(data.folders).toHaveLength(1);
+    expect(data.folders[0].name).toBe("仕事");
+    expect(data.folders[0].parentId).toBe(null);
+  });
+
+  it("フォルダの古い更新は勝たない（LWW）", async () => {
+    await sync({ since: 0, notes: [], attachments: [], folders: [folder({ updatedAt: 200, name: "new" })] });
+    await sync({ since: 0, notes: [], attachments: [], folders: [folder({ updatedAt: 150, name: "old" })] });
+    const data = await (await sync({ since: 0, notes: [], attachments: [], folders: [] })).json() as any;
+    expect(data.folders[0].name).toBe("new");
+    expect(data.folders[0].updatedAt).toBe(200);
+  });
+
+  it("メモのfolderIdが往復する", async () => {
+    await sync({ since: 0, notes: [note({ id: "WITHFOLDER", folderId: "F2" })], attachments: [], folders: [] });
+    const data = await (await sync({ since: 0, notes: [], attachments: [], folders: [] })).json() as any;
+    expect(data.notes.find((n: any) => n.id === "WITHFOLDER")?.folderId).toBe("F2");
+  });
+
+  it("30日を過ぎた削除済みフォルダはpurgeされ、削除スタブがfolders配列に届く（notes配列に混ざらない）", async () => {
+    const old = Date.now() - 31 * 24 * 60 * 60 * 1000;
+    await sync({ since: 0, notes: [], attachments: [], folders: [folder({ id: "OLDFOLDER", updatedAt: old, deleted: 1 })] });
+    const r = await (await sync({ since: 0, notes: [], attachments: [], folders: [] })).json() as any;
+    const stub = r.folders.find((f: any) => f.id === "OLDFOLDER");
+    expect(stub?.deleted).toBe(1);
+    expect(r.notes.find((n: any) => n.id === "OLDFOLDER")).toBeUndefined();
+  });
+
+  it("purge済みフォルダidのpushは復活せずpurgedIdsに載る", async () => {
+    const old = Date.now() - 31 * 24 * 60 * 60 * 1000;
+    await sync({ since: 0, notes: [], attachments: [], folders: [folder({ id: "ZOMBIEFOLDER", updatedAt: old, deleted: 1 })] });
+    await sync({ since: 0, notes: [], attachments: [], folders: [] }); // purge発火
+    const r = await (await sync({
+      since: 0,
+      notes: [],
+      attachments: [],
+      folders: [folder({ id: "ZOMBIEFOLDER", name: "edited-offline", updatedAt: Date.now(), deleted: 0 })],
+    })).json() as any;
+    expect(r.purgedIds).toContain("ZOMBIEFOLDER");
+    expect(r.folders.find((f: any) => f.id === "ZOMBIEFOLDER" && f.deleted === 0)).toBeUndefined();
   });
 });
