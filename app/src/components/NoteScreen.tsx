@@ -3,6 +3,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { flattenFolderTree, listAllFolders, moveNote } from "../lib/folders";
 import { renderMarkdown, toggleCheckbox } from "../lib/markdown";
 import type { Note } from "../lib/types";
+import { BackIcon } from "./icons";
 import { useAttachmentUrls } from "./useAttachmentUrls";
 
 type Props = {
@@ -45,7 +46,9 @@ export function NoteScreen({ note, startEditing, onChange, onDelete, onBack, onM
   return (
     <div className="note">
       <div className="toolbar">
-        <button onClick={onBack}>←</button>
+        <button onClick={onBack} aria-label="戻る">
+          <BackIcon />
+        </button>
         <span className="stars">
           {[1, 2, 3].map((i) => (
             <button

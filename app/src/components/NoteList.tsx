@@ -5,6 +5,7 @@ import { listNotesIn } from "../lib/folders";
 import { firstLineTitle, urlOnly } from "../lib/markdown";
 import type { SortMode } from "../lib/sort";
 import type { Folder, Note } from "../lib/types";
+import { FolderIcon, TrashIcon } from "./icons";
 import { useAttachmentUrls } from "./useAttachmentUrls";
 
 // カードの長押しドラッグが運ぶ荷物。noteはメモ本体、folderはフォルダそのものを表す
@@ -22,6 +23,8 @@ type Props = {
   onOpen: (id: string) => void;
   onCreate: () => void;
   onDelete: (id: string) => void;
+  // 検索・タグ絞り込み中はフォルダ横断表示になるモード。App側の判定を一本化して受け取る
+  isBrowsingFolder: boolean;
   folderPath: Folder[];
   childFolders: Folder[];
   onOpenFolder: (id: string | null) => void;
@@ -33,8 +36,7 @@ type Props = {
 };
 
 export function NoteList(p: Props) {
-  // 検索・タグ絞り込み中はフォルダを横断して探すモード。パンくず・フォルダカード・フォルダ作成は隠す
-  const isBrowsingFolder = p.query.trim() === "" && p.activeTags.length === 0;
+  const isBrowsingFolder = p.isBrowsingFolder;
   return (
     <div className="list">
       <div className="toolbar">
@@ -73,7 +75,8 @@ export function NoteList(p: Props) {
           key={n.id}
           onDelete={() => p.onDelete(n.id)}
           onOpen={() => p.onOpen(n.id)}
-          dragPayload={{ kind: "note", id: n.id }}
+          // 絞り込み中はドロップ先（フォルダ/パンくず）が画面に無いため、ドラッグ自体を始めさせない
+          dragPayload={isBrowsingFolder ? { kind: "note", id: n.id } : undefined}
           currentLocationId={n.folderId}
           onMoveNote={p.onMoveNote}
           onMoveFolder={p.onMoveFolder}
@@ -97,7 +100,9 @@ export function NoteList(p: Props) {
           </div>
         </SwipeableCard>
       ))}
-      {p.notes.length === 0 && <p className="empty">メモがありません</p>}
+      {p.notes.length === 0 && (
+        <p className="empty">まだメモがありません。「新規」から書き始めるか、URLや画像を貼り付けてください。</p>
+      )}
     </div>
   );
 }
@@ -111,24 +116,28 @@ function Breadcrumb({
   onNavigate: (id: string | null) => void;
   onRenameCurrent: () => void;
 }) {
+  const atRoot = path.length === 0;
   return (
     <div className="breadcrumb">
       {/* data-drop-folder: メモ・フォルダを上の階層へ戻すためのドロップ先。ルートは"root" */}
-      <span className="crumb" data-drop-folder="root" onClick={() => onNavigate(null)}>
+      <span className={atRoot ? "crumb crumb-current" : "crumb"} data-drop-folder="root" onClick={() => onNavigate(null)}>
         すべてのメモ
       </span>
-      {path.map((f, i) => (
-        <span key={f.id}>
-          <span className="crumb-sep"> &gt; </span>
-          <span
-            className="crumb"
-            data-drop-folder={f.id}
-            onClick={() => (i === path.length - 1 ? onRenameCurrent() : onNavigate(f.id))}
-          >
-            {f.name}
+      {path.map((f, i) => {
+        const isCurrent = i === path.length - 1;
+        return (
+          <span key={f.id}>
+            <span className="crumb-sep"> &gt; </span>
+            <span
+              className={isCurrent ? "crumb crumb-current" : "crumb"}
+              data-drop-folder={f.id}
+              onClick={() => (isCurrent ? onRenameCurrent() : onNavigate(f.id))}
+            >
+              {f.name}
+            </span>
           </span>
-        </span>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -157,7 +166,7 @@ function FolderCard({
       onMoveNote={onMoveNote}
       onMoveFolder={onMoveFolder}
     >
-      <span className="folder-icon">📁</span>
+      <FolderIcon size={14} className="folder-icon" />
       <span className="folder-name">{folder.name}</span>
       <span className="folder-count">{count}件</span>
     </SwipeableCard>
@@ -253,7 +262,10 @@ function SwipeableCard({
 
   return (
     <div className="swipe-wrap">
-      <div className="swipe-bg">削除</div>
+      <div className="swipe-bg">
+        <TrashIcon size={18} />
+        削除
+      </div>
       <div
         ref={cardRef}
         className={fullClass}
@@ -261,7 +273,7 @@ function SwipeableCard({
         style={
           isDragMode
             ? {
-                transform: `translate(${dragOffset.x}px, ${dragOffset.y}px) scale(1.03)`,
+                transform: `translate(${dragOffset.x}px, ${dragOffset.y}px) scale(1.02)`,
                 touchAction: "pan-y",
                 // 自分自身がelementFromPointに引っかかると下のドロップ先が判定できないため、ドラッグ中は自分をヒットテスト対象から外す
                 // （pointerはsetPointerCaptureで捕捉済みのため、pointerEvents:noneでもmove/upは自分に届く）

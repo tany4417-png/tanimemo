@@ -1,3 +1,5 @@
+import { SettingsIcon, SyncIcon } from "./icons";
+
 type Props = {
   status: "idle" | "syncing" | "offline" | "error";
   pending: number;
@@ -16,8 +18,14 @@ export function SyncStatus({ status, pending, lastSync, onSync, onSettings }: Pr
         {label}（{time}）{pending > 0 ? ` 未送信${pending}件` : ""}
       </span>
       <span className="spacer" />
-      <button onClick={onSync} disabled={status === "syncing"}>同期</button>
-      <button onClick={onSettings}>設定</button>
+      <button onClick={onSync} disabled={status === "syncing"}>
+        <SyncIcon size={14} />
+        同期
+      </button>
+      <button onClick={onSettings}>
+        <SettingsIcon size={14} />
+        設定
+      </button>
     </div>
   );
 }

@@ -168,75 +168,79 @@ export default function App() {
   return (
     <main className="app">
       <SyncStatus status={status} pending={pending} lastSync={lastSync} onSync={() => void syncNow()} onSettings={() => setView({ name: "settings" })} />
-      {view.name === "list" && (
-        <NoteList
-          notes={shown}
-          allTags={allTags(notes)}
-          sort={sort}
-          onSort={setSort}
-          activeTags={activeTags}
-          onToggleTag={(t) => setActiveTags((a) => (a.includes(t) ? a.filter((x) => x !== t) : [...a, t]))}
-          query={query}
-          onQuery={setQuery}
-          onOpen={(id) => setView({ name: "note", id })}
-          onCreate={onCreate}
-          onDelete={async (id) => {
-            await softDeleteNote(id);
-            scheduleSync();
-          }}
-          folderPath={folderPathList}
-          childFolders={childFolders}
-          onOpenFolder={onOpenFolder}
-          onCreateFolder={onCreateFolder}
-          onRenameCurrentFolder={onRenameCurrentFolder}
-          onDeleteFolder={onDeleteFolder}
-          onMoveNote={onMoveNote}
-          onMoveFolder={onMoveFolder}
-        />
-      )}
-      {view.name === "note" && current && (
-        <NoteScreen
-          note={current}
-          startEditing={view.name === "note" && view.isNew === true}
-          onChange={async (patch) => {
-            await updateNote(current.id, patch as NotePatch);
-            scheduleSync();
-          }}
-          onDelete={async () => {
-            await softDeleteNote(current.id);
-            setView({ name: "list" });
-            scheduleSync();
-          }}
-          onBack={() => setView({ name: "list" })}
-          onMoved={() => scheduleSync()}
-        />
-      )}
-      {view.name === "settings" && (
-        <Settings
-          token={token}
-          onSave={(t) => {
-            localStorage.setItem("tanimemo.token", t);
-            setToken(t);
-            setView({ name: "list" });
-          }}
-          onBack={() => setView({ name: "list" })}
-          onExport={async () => {
-            const { blob, missingImages } = await exportZip(token);
-            if (missingImages > 0) {
-              alert(`未取得の画像 ${missingImages}件はこの端末に無いため含まれていません`);
-            }
-            const a = document.createElement("a");
-            a.href = URL.createObjectURL(blob);
-            a.download = `タニメモ-エクスポート-${localYmd(new Date())}.zip`;
-            a.click();
-            URL.revokeObjectURL(a.href);
-          }}
-          onTrash={() => setView({ name: "trash" })}
-        />
-      )}
-      {view.name === "trash" && (
-        <TrashScreen onBack={() => setView({ name: "settings" })} onRestored={() => scheduleSync()} />
-      )}
+      {/* 画面切替（list/note/settings/trash）ごとにkeyを変えてフェード＋スライドで再マウントさせる。DOM構造変更はこのラッパのみ */}
+      <div className="view-transition" key={view.name}>
+        {view.name === "list" && (
+          <NoteList
+            notes={shown}
+            allTags={allTags(notes)}
+            sort={sort}
+            onSort={setSort}
+            activeTags={activeTags}
+            onToggleTag={(t) => setActiveTags((a) => (a.includes(t) ? a.filter((x) => x !== t) : [...a, t]))}
+            query={query}
+            onQuery={setQuery}
+            onOpen={(id) => setView({ name: "note", id })}
+            onCreate={onCreate}
+            onDelete={async (id) => {
+              await softDeleteNote(id);
+              scheduleSync();
+            }}
+            isBrowsingFolder={isBrowsingFolder}
+            folderPath={folderPathList}
+            childFolders={childFolders}
+            onOpenFolder={onOpenFolder}
+            onCreateFolder={onCreateFolder}
+            onRenameCurrentFolder={onRenameCurrentFolder}
+            onDeleteFolder={onDeleteFolder}
+            onMoveNote={onMoveNote}
+            onMoveFolder={onMoveFolder}
+          />
+        )}
+        {view.name === "note" && current && (
+          <NoteScreen
+            note={current}
+            startEditing={view.name === "note" && view.isNew === true}
+            onChange={async (patch) => {
+              await updateNote(current.id, patch as NotePatch);
+              scheduleSync();
+            }}
+            onDelete={async () => {
+              await softDeleteNote(current.id);
+              setView({ name: "list" });
+              scheduleSync();
+            }}
+            onBack={() => setView({ name: "list" })}
+            onMoved={() => scheduleSync()}
+          />
+        )}
+        {view.name === "settings" && (
+          <Settings
+            token={token}
+            onSave={(t) => {
+              localStorage.setItem("tanimemo.token", t);
+              setToken(t);
+              setView({ name: "list" });
+            }}
+            onBack={() => setView({ name: "list" })}
+            onExport={async () => {
+              const { blob, missingImages } = await exportZip(token);
+              if (missingImages > 0) {
+                alert(`未取得の画像 ${missingImages}件はこの端末に無いため含まれていません`);
+              }
+              const a = document.createElement("a");
+              a.href = URL.createObjectURL(blob);
+              a.download = `タニメモ-エクスポート-${localYmd(new Date())}.zip`;
+              a.click();
+              URL.revokeObjectURL(a.href);
+            }}
+            onTrash={() => setView({ name: "trash" })}
+          />
+        )}
+        {view.name === "trash" && (
+          <TrashScreen onBack={() => setView({ name: "settings" })} onRestored={() => scheduleSync()} />
+        )}
+      </div>
     </main>
   );
 }

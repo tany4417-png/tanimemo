@@ -1,6 +1,7 @@
 import { useLiveQuery } from "dexie-react-hooks";
 import { firstLineTitle } from "../lib/markdown";
 import { TRASH_RETENTION_MS, listTrashedNotes, restoreNote } from "../lib/notes";
+import { BackIcon } from "./icons";
 import { CardThumbs } from "./NoteList";
 
 type Props = { onBack: () => void; onRestored: () => void };
@@ -10,7 +11,9 @@ export function TrashScreen({ onBack, onRestored }: Props) {
   return (
     <div className="trash">
       <div className="toolbar">
-        <button onClick={onBack}>←</button>
+        <button onClick={onBack} aria-label="戻る">
+          <BackIcon />
+        </button>
         <h2>ゴミ箱</h2>
       </div>
       <p className="trash-note">削除から30日たつと自動的に完全削除されます。</p>
