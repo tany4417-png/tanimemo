@@ -28,9 +28,9 @@ type AttRow = { id: string; note_id: string; mime: string; size: number; created
 
 export async function handleSync(req: Request, env: Env): Promise<Response> {
   const body = (await req.json()) as SyncRequest;
+  const now = Date.now();
   for (const n of body.notes ?? []) await upsertNote(env.DB, n);
   for (const a of body.attachments ?? []) await upsertAttachment(env.DB, a);
-  const now = Date.now();
   const noteRows = await env.DB.prepare(`SELECT * FROM notes WHERE received_at > ?1`).bind(body.since).all<NoteRow>();
   const attRows = await env.DB.prepare(`SELECT * FROM attachments WHERE received_at > ?1`).bind(body.since).all<AttRow>();
   const res: SyncResponse = {
