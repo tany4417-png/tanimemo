@@ -13,6 +13,11 @@
 }
 
 * { box-sizing: border-box; }
+html, body {
+  /* 縦パンのみ許可＝ピンチズーム・ダブルタップズーム無効（アプリ型UI） */
+  touch-action: pan-y;
+}
+
 body {
   margin: 0;
   font-family: -apple-system, "Hiragino Sans", "Yu Gothic UI", sans-serif;

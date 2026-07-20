@@ -1,4 +1,5 @@
 import { db } from "./db";
+import { thumbKey } from "./attachments";
 import type { AttachmentMeta, Folder, Note, SyncResponse } from "./types";
 
 export type SyncResult = { pushed: number; pulled: number };
@@ -85,9 +86,12 @@ export async function runSync(token: string, fetchFn: typeof fetch = fetch): Pro
       const childAtts = await db.attachments.where("noteId").equals(id).toArray();
       for (const child of childAtts) {
         await db.attachmentBlobs.delete(child.id);
+        await db.attachmentBlobs.delete(thumbKey(child.id));
       }
       await db.attachments.where("noteId").equals(id).delete();
       await db.attachmentBlobs.delete(id);
+
+      await db.attachmentBlobs.delete(thumbKey(id));
       await db.attachments.delete(id);
       await db.folders.delete(id);
     }

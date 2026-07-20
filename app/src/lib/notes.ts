@@ -1,5 +1,6 @@
 import { ulid } from "ulid";
 import { db } from "./db";
+import { thumbKey } from "./attachments";
 import type { Note } from "./types";
 
 export type NotePatch = Partial<Pick<Note, "body" | "tags" | "importance" | "deleted" | "folderId" | "orderKey">>;
@@ -52,7 +53,7 @@ export async function purgeExpiredTrashLocal(now = Date.now()): Promise<number> 
   await db.transaction("rw", db.notes, db.attachments, db.attachmentBlobs, db.folders, async () => {
     await db.notes.bulkDelete([...ids]);
     await db.attachments.bulkDelete(atts.map((a) => a.id));
-    await db.attachmentBlobs.bulkDelete(atts.map((a) => a.id));
+    await db.attachmentBlobs.bulkDelete(atts.flatMap((a) => [a.id, thumbKey(a.id)]));
     await db.folders.bulkDelete(folderIds);
   });
   return expired.length + expiredFolders.length;
