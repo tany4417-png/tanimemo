@@ -42,7 +42,7 @@ export async function upsertFolder(db: D1Database, f: FolderRecord): Promise<boo
        name = excluded.name, parent_id = excluded.parent_id,
        updated_at = excluded.updated_at, deleted = excluded.deleted, received_at = excluded.received_at
      WHERE excluded.updated_at > folders.updated_at`
-  ).bind(f.id, f.name, f.parentId, f.createdAt, f.updatedAt, f.deleted, Date.now()).run();
+  ).bind(f.id, f.name, f.parentId ?? null, f.createdAt, f.updatedAt, f.deleted, Date.now()).run();
   return true;
 }
 
