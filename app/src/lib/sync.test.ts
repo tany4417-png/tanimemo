@@ -104,6 +104,13 @@ describe("runSync", () => {
     expect(await db.notes.where("dirty").equals(1).count()).toBe(1);
     expect(await db.meta.get("lastSync")).toBeUndefined();
   });
+
+  it("purgedIdsが返るとローカルからそのメモを物理削除する（サーバーで既に消えた編集を復活させない）", async () => {
+    const a = await createNote("purged elsewhere");
+    const { f } = okFetch({ purgedIds: [a.id] });
+    await runSync("tok", f);
+    expect(await db.notes.get(a.id)).toBeUndefined();
+  });
 });
 
 describe("runSync 添付アップロード", () => {

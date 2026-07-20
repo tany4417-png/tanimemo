@@ -91,7 +91,8 @@ function SwipeableCard({ onDelete, onOpen, children }: { onDelete: () => void; o
           if (!start.current) return;
           const dxNow = e.clientX - start.current.x;
           const dyNow = e.clientY - start.current.y;
-          if (!dragging.current && dxNow < -12 && Math.abs(dxNow) > Math.abs(dyNow)) {
+          // 誤爆防止: 開始は左24px以上かつ横成分が縦の1.5倍以上のときだけ
+          if (!dragging.current && dxNow < -24 && Math.abs(dxNow) > 1.5 * Math.abs(dyNow)) {
             dragging.current = true;
             try {
               (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
@@ -106,7 +107,7 @@ function SwipeableCard({ onDelete, onOpen, children }: { onDelete: () => void; o
         }}
         onPointerUp={(e) => {
           const isLink = (e.target as HTMLElement).closest("a") !== null;
-          if (dragging.current && dxRef.current < -90) onDelete();
+          if (dragging.current && dxRef.current < -120) onDelete();
           else if (!dragging.current && start.current && !isLink) onOpen();
           reset();
         }}
@@ -118,7 +119,7 @@ function SwipeableCard({ onDelete, onOpen, children }: { onDelete: () => void; o
   );
 }
 
-function CardThumbs({ noteId }: { noteId: string }) {
+export function CardThumbs({ noteId }: { noteId: string }) {
   const { metas, urls } = useAttachmentUrls(noteId, 3);
   if (metas.length === 0) return null;
   return (

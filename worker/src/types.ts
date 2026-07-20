@@ -19,4 +19,4 @@ export type AttachmentRecord = {
 };
 
 export type SyncRequest = { since: number; notes: NoteRecord[]; attachments: AttachmentRecord[] };
-export type SyncResponse = { now: number; notes: NoteRecord[]; attachments: AttachmentRecord[] };
+export type SyncResponse = { now: number; notes: NoteRecord[]; attachments: AttachmentRecord[]; purgedIds: string[] };

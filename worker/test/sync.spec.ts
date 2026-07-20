@@ -15,6 +15,7 @@ describe("/api/sync", () => {
   afterEach(async () => {
     await env.DB.prepare("DELETE FROM notes").run();
     await env.DB.prepare("DELETE FROM attachments").run();
+    await env.DB.prepare("DELETE FROM purged").run();
   });
 
   it("pushしたメモがpullで返る", async () => {
@@ -114,5 +115,30 @@ describe("/api/sync", () => {
     await sync({ since: 0, notes: [note({ id: "ZOMBIE", updatedAt: Date.now(), body: "edited-offline", deleted: 0 })], attachments: [] });
     const r = await (await sync({ since: 0, notes: [], attachments: [] })).json() as any;
     expect(r.notes.find((n: any) => n.id === "ZOMBIE" && n.deleted === 0)).toBeUndefined();
+  });
+
+  it("生きているメモの添付だけが期限切れになっても、添付idの削除スタブが幻のメモとしてpullに混ざらない", async () => {
+    const old = Date.now() - 31 * 24 * 60 * 60 * 1000;
+    await sync({
+      since: 0,
+      notes: [note({ id: "LIVE", updatedAt: Date.now(), deleted: 0 })],
+      attachments: [{ id: "OLDATT", noteId: "LIVE", mime: "image/png", size: 1, createdAt: old, updatedAt: old, deleted: 1 }],
+    });
+    await sync({ since: 0, notes: [], attachments: [] }); // purge発火（添付だけが期限切れ）
+    const r = await (await sync({ since: 0, notes: [], attachments: [] })).json() as any;
+    expect(r.notes.find((n: any) => n.id === "OLDATT")).toBeUndefined();
+    expect(r.notes.find((n: any) => n.id === "LIVE")?.deleted).toBe(0);
+  });
+
+  it("purge済みidへのpushはpurgedIdsとして返る", async () => {
+    const old = Date.now() - 31 * 24 * 60 * 60 * 1000;
+    await sync({ since: 0, notes: [note({ id: "ZOMBIE2", updatedAt: old, deleted: 1 })], attachments: [] });
+    await sync({ since: 0, notes: [], attachments: [] }); // purge発火
+    const r = await (await sync({
+      since: 0,
+      notes: [note({ id: "ZOMBIE2", updatedAt: Date.now(), body: "edited-offline", deleted: 0 })],
+      attachments: [],
+    })).json() as any;
+    expect(r.purgedIds).toContain("ZOMBIE2");
   });
 });

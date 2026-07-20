@@ -1,6 +1,7 @@
 import { useLiveQuery } from "dexie-react-hooks";
 import { firstLineTitle } from "../lib/markdown";
 import { TRASH_RETENTION_MS, listTrashedNotes, restoreNote } from "../lib/notes";
+import { CardThumbs } from "./NoteList";
 
 type Props = { onBack: () => void; onRestored: () => void };
 
@@ -17,7 +18,8 @@ export function TrashScreen({ onBack, onRestored }: Props) {
         const daysLeft = Math.max(0, Math.ceil((n.updatedAt + TRASH_RETENTION_MS - Date.now()) / (24 * 60 * 60 * 1000)));
         return (
           <div key={n.id} className="card trash-card">
-            <div className="card-title">{n.body.trim() === "" ? "(画像メモ)" : firstLineTitle(n.body)}</div>
+            {n.body.trim() !== "" && <div className="card-title">{firstLineTitle(n.body)}</div>}
+            <CardThumbs noteId={n.id} />
             <div className="card-sub">
               削除: {new Date(n.updatedAt).toLocaleString("ja-JP")} / 残り{daysLeft}日
             </div>

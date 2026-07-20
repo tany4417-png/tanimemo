@@ -1,0 +1,1 @@
+ALTER TABLE purged ADD COLUMN kind TEXT NOT NULL DEFAULT 'note';

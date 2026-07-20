@@ -37,7 +37,7 @@ export async function runSync(token: string, fetchFn: typeof fetch = fetch): Pro
   if (!res.ok) throw new Error(`sync failed: ${res.status}`);
   const data = (await res.json()) as SyncResponse;
 
-  await db.transaction("rw", db.notes, db.attachments, db.meta, async () => {
+  await db.transaction("rw", db.notes, db.attachments, db.attachmentBlobs, db.meta, async () => {
     // fetch応答待ちの間に新しい編集が入っている場合、その編集のdirtyを誤ってクリアしないよう、
     // 現在の行のupdatedAtがpushしたスナップショットと一致する場合だけdirtyを落とす。
     for (const n of dirtyNotes) {
@@ -57,6 +57,19 @@ export async function runSync(token: string, fetchFn: typeof fetch = fetch): Pro
       if (!cur || a.updatedAt > cur.updatedAt) await db.attachments.put({ ...a, dirty: 0 });
     }
     await db.meta.put({ key: "lastSync", value: data.now });
+
+    // サーバーで既にpurge済みのidは、上のdirtyクリアや受信適用で幽霊行が
+    // 残っていてもここで物理削除して上書きする（削除の伝達漏れ防止・Fix2）。
+    for (const id of data.purgedIds ?? []) {
+      await db.notes.delete(id);
+      const childAtts = await db.attachments.where("noteId").equals(id).toArray();
+      for (const child of childAtts) {
+        await db.attachmentBlobs.delete(child.id);
+      }
+      await db.attachments.where("noteId").equals(id).delete();
+      await db.attachmentBlobs.delete(id);
+      await db.attachments.delete(id);
+    }
   });
 
   return { pushed: dirtyNotes.length + dirtyAtts.length, pulled: data.notes.length + data.attachments.length };

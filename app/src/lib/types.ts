@@ -24,4 +24,5 @@ export type SyncResponse = {
   now: number;
   notes: Omit<Note, "dirty">[];
   attachments: Omit<AttachmentMeta, "dirty">[];
+  purgedIds?: string[];
 };
