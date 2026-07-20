@@ -24,6 +24,7 @@ export default function App() {
   const [status, setStatus] = useState<"idle" | "syncing" | "offline" | "error">("idle");
   const [lastSync, setLastSync] = useState<number | null>(null);
   const timer = useRef<number | undefined>(undefined);
+  const syncing = useRef(false);
 
   const notes = useLiveQuery(listActiveNotes, [], []);
   const pending = useLiveQuery(
@@ -38,7 +39,8 @@ export default function App() {
   const current = view.name === "note" ? notes.find((n) => n.id === view.id) : undefined;
 
   const syncNow = useCallback(async () => {
-    if (!token) return;
+    if (!token || syncing.current) return;
+    syncing.current = true;
     setStatus("syncing");
     try {
       await runSync(token);
@@ -46,6 +48,8 @@ export default function App() {
       setLastSync(Date.now());
     } catch {
       setStatus(navigator.onLine ? "error" : "offline");
+    } finally {
+      syncing.current = false;
     }
   }, [token]);
 
@@ -53,6 +57,8 @@ export default function App() {
     window.clearTimeout(timer.current);
     timer.current = window.setTimeout(() => void syncNow(), 3000);
   }, [syncNow]);
+
+  useEffect(() => () => window.clearTimeout(timer.current), []);
 
   useEffect(() => {
     void syncNow();
