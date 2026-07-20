@@ -1,8 +1,8 @@
 import { useState } from "react";
 
-type Props = { token: string; onSave: (t: string) => void; onBack: () => void };
+type Props = { token: string; onSave: (t: string) => void; onBack: () => void; onExport: () => void };
 
-export function Settings({ token, onSave, onBack }: Props) {
+export function Settings({ token, onSave, onBack, onExport }: Props) {
   const [value, setValue] = useState(token);
   return (
     <div className="settings">
@@ -13,6 +13,8 @@ export function Settings({ token, onSave, onBack }: Props) {
       <label htmlFor="token">APIトークン</label>
       <input id="token" type="password" value={value} onChange={(e) => setValue(e.target.value)} />
       <button className="primary" onClick={() => onSave(value.trim())}>保存</button>
+      <hr />
+      <button onClick={onExport}>全メモをエクスポート（zip）</button>
     </div>
   );
 }

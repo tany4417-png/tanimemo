@@ -6,6 +6,7 @@ import { Settings } from "./components/Settings";
 import { SyncStatus } from "./components/SyncStatus";
 import { addImageFromBlob } from "./lib/attachments";
 import { db } from "./lib/db";
+import { exportZip } from "./lib/export";
 import { allTags, createNote, listActiveNotes, softDeleteNote, updateNote, type NotePatch } from "./lib/notes";
 import { filterByTags, searchNotes, sortNotes, type SortMode } from "./lib/sort";
 import { runSync } from "./lib/sync";
@@ -148,6 +149,14 @@ export default function App() {
             setView({ name: "list" });
           }}
           onBack={() => setView({ name: "list" })}
+          onExport={async () => {
+            const blob = await exportZip();
+            const a = document.createElement("a");
+            a.href = URL.createObjectURL(blob);
+            a.download = `タニメモ-エクスポート-${new Date().toISOString().slice(0, 10)}.zip`;
+            a.click();
+            URL.revokeObjectURL(a.href);
+          }}
         />
       )}
     </main>
