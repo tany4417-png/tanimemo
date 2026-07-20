@@ -13,7 +13,7 @@
 
 ## 運用
 
-- 本番URL: https://tanimemo.tany4417.workers.dev
+- 本番URL: https://tanimemo.tanybeth.workers.dev
 - デプロイ: `cd app; npm run build` → `cd ../worker; npx wrangler deploy`
 - 本番トークン変更: `cd worker; npx wrangler secret put API_TOKEN`（変更後は各端末の設定画面とショートカットも更新）
 - バックアップ: アプリの設定 → 全メモをエクスポート（zip）
