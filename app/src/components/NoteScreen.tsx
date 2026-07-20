@@ -1,4 +1,6 @@
 import { useMemo, useState } from "react";
+import { useLiveQuery } from "dexie-react-hooks";
+import { flattenFolderTree, listAllFolders, moveNote } from "../lib/folders";
 import { renderMarkdown, toggleCheckbox } from "../lib/markdown";
 import type { Note } from "../lib/types";
 import { useAttachmentUrls } from "./useAttachmentUrls";
@@ -9,16 +11,27 @@ type Props = {
   onChange: (patch: { body?: string; tags?: string[]; importance?: 0 | 1 | 2 | 3 }) => void;
   onDelete: () => void;
   onBack: () => void;
+  onMoved: () => void;
 };
 
-export function NoteScreen({ note, startEditing, onChange, onDelete, onBack }: Props) {
+export function NoteScreen({ note, startEditing, onChange, onDelete, onBack, onMoved }: Props) {
   const [editing, setEditing] = useState(startEditing ?? false);
   const [draft, setDraft] = useState(note.body);
+  const [movePickerOpen, setMovePickerOpen] = useState(false);
   const html = useMemo(() => renderMarkdown(note.body), [note.body]);
+  const allFolders = useLiveQuery(listAllFolders, [], []);
+  const flatFolders = useMemo(() => flattenFolderTree(allFolders), [allFolders]);
 
   function save() {
     onChange({ body: draft });
     setEditing(false);
+  }
+
+  async function moveTo(folderId: string | null) {
+    if (folderId === note.folderId) return;
+    await moveNote(note.id, folderId);
+    setMovePickerOpen(false);
+    onMoved();
   }
 
   function clickView(e: React.MouseEvent<HTMLDivElement>) {
@@ -44,6 +57,7 @@ export function NoteScreen({ note, startEditing, onChange, onDelete, onBack }: P
             </button>
           ))}
         </span>
+        <button onClick={() => setMovePickerOpen((v) => !v)}>移動…</button>
         {editing ? (
           <button className="primary" onClick={save}>保存</button>
         ) : (
@@ -51,6 +65,26 @@ export function NoteScreen({ note, startEditing, onChange, onDelete, onBack }: P
         )}
         <button className="danger" onClick={onDelete}>削除</button>
       </div>
+      {movePickerOpen && (
+        <div className="folder-picker">
+          <div
+            className={note.folderId === null ? "folder-picker-item disabled" : "folder-picker-item"}
+            onClick={() => void moveTo(null)}
+          >
+            すべてのメモ
+          </div>
+          {flatFolders.map(({ folder, depth }) => (
+            <div
+              key={folder.id}
+              className={note.folderId === folder.id ? "folder-picker-item disabled" : "folder-picker-item"}
+              style={{ paddingLeft: `${12 + depth * 16}px` }}
+              onClick={() => void moveTo(folder.id)}
+            >
+              {folder.name}
+            </div>
+          ))}
+        </div>
+      )}
       <input
         key={note.id}
         className="tags-input"

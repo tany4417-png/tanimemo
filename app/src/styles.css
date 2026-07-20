@@ -54,3 +54,16 @@ button.danger { color: #b03030; }
 .swipe-bg { position: absolute; inset: 0; display: flex; align-items: center; justify-content: flex-end; padding-right: 18px; background: #b03030; color: #fff; border-radius: 10px; font-weight: 600; }
 .trash-note { font-size: 0.85rem; color: #8a8474; }
 .trash-card button { margin-top: 6px; }
+.breadcrumb { font-size: 0.85rem; color: #6a6456; padding-bottom: 8px; }
+.breadcrumb .crumb { cursor: pointer; }
+.breadcrumb .crumb:hover { text-decoration: underline; }
+.breadcrumb .crumb-sep { color: #b0aa9a; }
+.folder-card { display: flex; align-items: center; gap: 8px; }
+.folder-card .folder-icon { font-size: 1.1rem; }
+.folder-card .folder-name { flex: 1; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.folder-card .folder-count { font-size: 0.78rem; color: #8a8474; }
+.folder-picker { background: #fff; border: 1px solid #e5dfd2; border-radius: 10px; margin-bottom: 8px; overflow: hidden; }
+.folder-picker-item { padding: 10px 12px; border-bottom: 1px solid #f0ece1; cursor: pointer; }
+.folder-picker-item:last-child { border-bottom: none; }
+.folder-picker-item:hover { background: #faf7f0; }
+.folder-picker-item.disabled { color: #b0aa9a; cursor: default; background: #faf7f0; }

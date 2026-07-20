@@ -1,7 +1,9 @@
 import { useRef, useState } from "react";
+import { useLiveQuery } from "dexie-react-hooks";
+import { listNotesIn } from "../lib/folders";
 import { firstLineTitle, urlOnly } from "../lib/markdown";
 import type { SortMode } from "../lib/sort";
-import type { Note } from "../lib/types";
+import type { Folder, Note } from "../lib/types";
 import { useAttachmentUrls } from "./useAttachmentUrls";
 
 type Props = {
@@ -16,9 +18,17 @@ type Props = {
   onOpen: (id: string) => void;
   onCreate: () => void;
   onDelete: (id: string) => void;
+  folderPath: Folder[];
+  childFolders: Folder[];
+  onOpenFolder: (id: string | null) => void;
+  onCreateFolder: () => void;
+  onRenameCurrentFolder: () => void;
+  onDeleteFolder: (id: string) => void;
 };
 
 export function NoteList(p: Props) {
+  // 検索・タグ絞り込み中はフォルダを横断して探すモード。パンくず・フォルダカード・フォルダ作成は隠す
+  const isBrowsingFolder = p.query.trim() === "" && p.activeTags.length === 0;
   return (
     <div className="list">
       <div className="toolbar">
@@ -28,8 +38,12 @@ export function NoteList(p: Props) {
           <option value="updated">更新順</option>
           <option value="importance">重要度順</option>
         </select>
+        {isBrowsingFolder && <button onClick={p.onCreateFolder}>フォルダ＋</button>}
         <button className="primary" onClick={p.onCreate}>新規</button>
       </div>
+      {isBrowsingFolder && (
+        <Breadcrumb path={p.folderPath} onNavigate={p.onOpenFolder} onRenameCurrent={p.onRenameCurrentFolder} />
+      )}
       <div className="tagbar">
         {p.allTags.map((t) => (
           <button key={t} className={p.activeTags.includes(t) ? "tag active" : "tag"} onClick={() => p.onToggleTag(t)}>
@@ -37,6 +51,10 @@ export function NoteList(p: Props) {
           </button>
         ))}
       </div>
+      {isBrowsingFolder &&
+        p.childFolders.map((f) => (
+          <FolderCard key={f.id} folder={f} onOpen={() => p.onOpenFolder(f.id)} onDelete={() => p.onDeleteFolder(f.id)} />
+        ))}
       {p.notes.map((n) => (
         <SwipeableCard key={n.id} onDelete={() => p.onDelete(n.id)} onOpen={() => p.onOpen(n.id)}>
           <div className="card-title">
@@ -63,7 +81,54 @@ export function NoteList(p: Props) {
   );
 }
 
-function SwipeableCard({ onDelete, onOpen, children }: { onDelete: () => void; onOpen: () => void; children: React.ReactNode }) {
+function Breadcrumb({
+  path,
+  onNavigate,
+  onRenameCurrent,
+}: {
+  path: Folder[];
+  onNavigate: (id: string | null) => void;
+  onRenameCurrent: () => void;
+}) {
+  return (
+    <div className="breadcrumb">
+      <span className="crumb" onClick={() => onNavigate(null)}>
+        すべてのメモ
+      </span>
+      {path.map((f, i) => (
+        <span key={f.id}>
+          <span className="crumb-sep"> &gt; </span>
+          <span className="crumb" onClick={() => (i === path.length - 1 ? onRenameCurrent() : onNavigate(f.id))}>
+            {f.name}
+          </span>
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function FolderCard({ folder, onOpen, onDelete }: { folder: Folder; onOpen: () => void; onDelete: () => void }) {
+  const count = useLiveQuery(async () => (await listNotesIn(folder.id)).length, [folder.id], 0);
+  return (
+    <SwipeableCard onDelete={onDelete} onOpen={onOpen} className="folder-card">
+      <span className="folder-icon">📁</span>
+      <span className="folder-name">{folder.name}</span>
+      <span className="folder-count">{count}件</span>
+    </SwipeableCard>
+  );
+}
+
+function SwipeableCard({
+  onDelete,
+  onOpen,
+  className,
+  children,
+}: {
+  onDelete: () => void;
+  onOpen: () => void;
+  className?: string;
+  children: React.ReactNode;
+}) {
   const [dx, setDx] = useState(0);
   // 判定はrefで行う（高速スワイプではstateの反映がpointerupに間に合わないため）
   const dxRef = useRef(0);
@@ -80,7 +145,7 @@ function SwipeableCard({ onDelete, onOpen, children }: { onDelete: () => void; o
     <div className="swipe-wrap">
       <div className="swipe-bg">削除</div>
       <div
-        className="card"
+        className={className ? `card ${className}` : "card"}
         style={{ transform: `translateX(${dx}px)`, touchAction: "pan-y" }}
         onPointerDown={(e) => {
           start.current = { x: e.clientX, y: e.clientY };

@@ -8,6 +8,7 @@ import { TrashScreen } from "./components/TrashScreen";
 import { addImageFromBlob } from "./lib/attachments";
 import { db } from "./lib/db";
 import { exportZip, localYmd } from "./lib/export";
+import { createFolder, deleteFolderKeepingContents, folderPath, listChildFolders, renameFolder } from "./lib/folders";
 import { allTags, createNote, listActiveNotes, purgeExpiredTrashLocal, softDeleteNote, updateNote, type NotePatch } from "./lib/notes";
 import { filterByTags, searchNotes, sortNotes, type SortMode } from "./lib/sort";
 import { runSync } from "./lib/sync";
@@ -23,6 +24,7 @@ export default function App() {
   };
   const [activeTags, setActiveTags] = useState<string[]>([]);
   const [query, setQuery] = useState("");
+  const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
   const [token, setToken] = useState(() => localStorage.getItem("tanimemo.token") ?? "");
   const [status, setStatus] = useState<"idle" | "syncing" | "offline" | "error">("idle");
   const [lastSync, setLastSync] = useState<number | null>(null);
@@ -35,9 +37,17 @@ export default function App() {
     [],
     0
   );
+  const childFolders = useLiveQuery(() => listChildFolders(currentFolderId), [currentFolderId], []);
+  const folderPathList = useLiveQuery(() => folderPath(currentFolderId), [currentFolderId], []);
+  // 検索・タグ絞り込みがどちらも空のときだけ現在フォルダ直下に絞る。絞り込み中は全フォルダ横断（従来どおり）
+  const isBrowsingFolder = query.trim() === "" && activeTags.length === 0;
+  const scopedNotes = useMemo(
+    () => (isBrowsingFolder ? notes.filter((n) => n.folderId === currentFolderId) : notes),
+    [notes, isBrowsingFolder, currentFolderId]
+  );
   const shown = useMemo(
-    () => sortNotes(searchNotes(filterByTags(notes, activeTags), query), sort),
-    [notes, activeTags, query, sort]
+    () => sortNotes(searchNotes(filterByTags(scopedNotes, activeTags), query), sort),
+    [scopedNotes, activeTags, query, sort]
   );
   const current = view.name === "note" ? notes.find((n) => n.id === view.id) : undefined;
 
@@ -109,9 +119,35 @@ export default function App() {
   }, [view, scheduleSync]);
 
   const onCreate = useCallback(async () => {
-    const n = await createNote();
+    const n = await createNote("", [], currentFolderId);
     setView({ name: "note", id: n.id, isNew: true });
-  }, []);
+  }, [currentFolderId]);
+
+  const onOpenFolder = useCallback((id: string | null) => setCurrentFolderId(id), []);
+
+  const onCreateFolder = useCallback(async () => {
+    const name = prompt("新しいフォルダ名");
+    if (!name || !name.trim()) return;
+    await createFolder(name.trim(), currentFolderId);
+    scheduleSync();
+  }, [currentFolderId, scheduleSync]);
+
+  const onRenameCurrentFolder = useCallback(async () => {
+    const cur = folderPathList[folderPathList.length - 1];
+    if (!cur) return;
+    const name = prompt("フォルダ名", cur.name);
+    if (!name || !name.trim()) return;
+    await renameFolder(cur.id, name.trim());
+    scheduleSync();
+  }, [folderPathList, scheduleSync]);
+
+  const onDeleteFolder = useCallback(
+    async (id: string) => {
+      await deleteFolderKeepingContents(id);
+      scheduleSync();
+    },
+    [scheduleSync]
+  );
 
   return (
     <main className="app">
@@ -132,6 +168,12 @@ export default function App() {
             await softDeleteNote(id);
             scheduleSync();
           }}
+          folderPath={folderPathList}
+          childFolders={childFolders}
+          onOpenFolder={onOpenFolder}
+          onCreateFolder={onCreateFolder}
+          onRenameCurrentFolder={onRenameCurrentFolder}
+          onDeleteFolder={onDeleteFolder}
         />
       )}
       {view.name === "note" && current && (
@@ -148,6 +190,7 @@ export default function App() {
             scheduleSync();
           }}
           onBack={() => setView({ name: "list" })}
+          onMoved={() => scheduleSync()}
         />
       )}
       {view.name === "settings" && (

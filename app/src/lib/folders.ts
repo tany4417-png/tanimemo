@@ -68,6 +68,32 @@ export async function moveFolder(id: string, newParentId: string | null): Promis
   return true;
 }
 
+export async function listAllFolders(): Promise<Folder[]> {
+  const all = await db.folders.toArray();
+  return all.filter((f) => f.deleted === 0);
+}
+
+export type FlatFolder = { folder: Folder; depth: number };
+
+// 親→子の順・同階層は名前昇順でフラット化する（フォルダ選択リスト用）。
+// 循環参照（データ破損時の防御。通常はmoveFolderが作成を防ぐ）は経路のidを覚えておき打ち切る。
+export function flattenFolderTree(
+  folders: Folder[],
+  parentId: string | null = null,
+  depth = 0,
+  ancestors: ReadonlySet<string> = new Set()
+): FlatFolder[] {
+  const children = folders
+    .filter((f) => f.parentId === parentId && !ancestors.has(f.id))
+    .sort((a, b) => (a.name > b.name ? 1 : a.name < b.name ? -1 : 0));
+  const result: FlatFolder[] = [];
+  for (const f of children) {
+    result.push({ folder: f, depth });
+    result.push(...flattenFolderTree(folders, f.id, depth + 1, new Set(ancestors).add(f.id)));
+  }
+  return result;
+}
+
 export async function deleteFolderKeepingContents(id: string): Promise<void> {
   await db.transaction("rw", db.folders, db.notes, async () => {
     const cur = await db.folders.get(id);

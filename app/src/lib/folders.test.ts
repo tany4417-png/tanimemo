@@ -1,10 +1,13 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { db, resetDbForTests } from "./db";
 import { createNote } from "./notes";
+import type { Folder } from "./types";
 import {
   createFolder,
   deleteFolderKeepingContents,
+  flattenFolderTree,
   folderPath,
+  listAllFolders,
   listChildFolders,
   listNotesIn,
   moveFolder,
@@ -181,5 +184,67 @@ describe("deleteFolderKeepingContents", () => {
     await deleteFolderKeepingContents(target.id);
     const noteAfter = await db.notes.get(note.id);
     expect(noteAfter?.folderId).toBeNull();
+  });
+});
+
+describe("listAllFolders", () => {
+  it("削除済みを除く全フォルダをフラットに返す", async () => {
+    const a = await createFolder("a", null);
+    const b = await createFolder("b", a.id);
+    const c = await createFolder("c", null);
+    await db.folders.update(c.id, { deleted: 1 });
+
+    const all = await listAllFolders();
+    expect(all.map((f) => f.id).sort()).toEqual([a.id, b.id].sort());
+  });
+});
+
+describe("flattenFolderTree", () => {
+  it("親子関係を深さ優先・同階層は名前昇順でフラット化する", () => {
+    const now = 0;
+    const mk = (id: string, name: string, parentId: string | null): Folder => ({
+      id,
+      name,
+      parentId,
+      createdAt: now,
+      updatedAt: now,
+      deleted: 0,
+      dirty: 0,
+    });
+    const folders: Folder[] = [
+      mk("root-b", "b", null),
+      mk("root-a", "a", null),
+      mk("a-child", "child", "root-a"),
+      mk("a-grandchild", "grandchild", "a-child"),
+    ];
+
+    const flat = flattenFolderTree(folders);
+    expect(flat.map((x) => [x.folder.id, x.depth])).toEqual([
+      ["root-a", 0],
+      ["a-child", 1],
+      ["a-grandchild", 2],
+      ["root-b", 0],
+    ]);
+  });
+
+  it("空配列を渡すと空配列を返す", () => {
+    expect(flattenFolderTree([])).toEqual([]);
+  });
+
+  it("循環参照があっても無限ループせず打ち切る", () => {
+    const now = 0;
+    const mk = (id: string, name: string, parentId: string | null): Folder => ({
+      id,
+      name,
+      parentId,
+      createdAt: now,
+      updatedAt: now,
+      deleted: 0,
+      dirty: 0,
+    });
+    // x -> y -> x という循環（本来moveFolderで防止されるが、データ破損時の防御として検証）
+    const folders: Folder[] = [mk("x", "x", "y"), mk("y", "y", "x")];
+    const flat = flattenFolderTree(folders);
+    expect(flat.length).toBeLessThanOrEqual(2);
   });
 });
