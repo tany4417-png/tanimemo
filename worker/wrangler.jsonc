@@ -11,9 +11,7 @@
     {
       "binding": "DB",
       "database_name": "tanimemo",
-      // ローカル開発・テストでは任意の値でよい。Task 15 のデプロイ時に
-      // `wrangler d1 create` が出力した実IDへ置き換える
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_id": "83bb69fb-97a3-4485-a7bf-cd0865709ea6",
       "migrations_dir": "migrations"
     }
   ],

@@ -3,3 +3,5 @@ dist/
 .wrangler/
 .dev.vars
 *.local
+docs/*.local.md
+docs-local-token.txt
