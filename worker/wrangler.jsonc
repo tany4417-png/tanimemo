@@ -1,0 +1,21 @@
+{
+  "name": "tanimemo",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-07-01",
+  "assets": {
+    "directory": "../app/dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "tanimemo",
+      // ローカル開発・テストでは任意の値でよい。Task 15 のデプロイ時に
+      // `wrangler d1 create` が出力した実IDへ置き換える
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "r2_buckets": [{ "binding": "ATT", "bucket_name": "tanimemo-att" }]
+}
