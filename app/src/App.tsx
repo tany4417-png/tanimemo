@@ -244,6 +244,7 @@ export default function App() {
             }}
             onBack={() => setView({ name: "list" })}
             onMoved={() => scheduleSync()}
+            onAttached={() => scheduleSync()}
           />
         )}
         {view.name === "settings" && (

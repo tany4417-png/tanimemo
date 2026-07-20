@@ -71,6 +71,20 @@ describe("exportZip", () => {
     expect(blob).toBeInstanceOf(Blob);
   });
 
+  it(":thumbキーのサムネblobは走査対象に含まれない（attachmentsメタ起点のため）", async () => {
+    await db.attachments.put({
+      id: "Z", noteId: "N", mime: "image/png", size: 1, createdAt: 1, updatedAt: 1, deleted: 0, dirty: 0,
+    });
+    await db.attachmentBlobs.put({ id: "Z", blob: new Blob([new Uint8Array([1])], { type: "image/png" }) });
+    await db.attachmentBlobs.put({ id: "Z:thumb", blob: new Blob([new Uint8Array([2])], { type: "image/jpeg" }) });
+    const { blob, missingImages } = await exportZip();
+    const files = unzipSync(new Uint8Array(await blob.arrayBuffer()));
+    const keys = Object.keys(files);
+    expect(missingImages).toBe(0);
+    expect(keys).toContain("images/Z.png");
+    expect(keys.some((k) => k.includes("thumb"))).toBe(false);
+  });
+
   it("フォルダ配下のメモはfolder行にフォルダパスが書き出される", async () => {
     const root = await createFolder("仕事", null);
     const child = await createFolder("2026", root.id);

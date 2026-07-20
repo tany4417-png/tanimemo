@@ -184,4 +184,15 @@ describe("runSync 添付アップロード", () => {
     expect(calls).toHaveLength(1);
     expect(calls[0].url).toBe("/api/sync");
   });
+
+  it(":thumbキーのサムネblobはアップロード対象に混ざらない（attachmentsメタが無いため走査されない）", async () => {
+    const meta = await addImageFromBlob("N1", new Blob([new Uint8Array([1])], { type: "image/png" }));
+    // addImageFromBlobが作る:thumbレコードに加え、他経路で紛れ込むケースも想定して明示的にも置いておく
+    await db.attachmentBlobs.put({ id: `${meta.id}:thumb`, blob: new Blob([new Uint8Array([2])], { type: "image/jpeg" }) });
+    const { f, calls } = okFetch();
+    await runSync("tok", f);
+    const uploadCalls = calls.filter((c) => c.url.startsWith("/api/attachments/"));
+    expect(uploadCalls).toHaveLength(1);
+    expect(uploadCalls[0].url).not.toContain("thumb");
+  });
 });

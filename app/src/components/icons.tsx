@@ -70,6 +70,17 @@ export function TrashIcon({ size = 24, className }: IconProps) {
   );
 }
 
+// 画像添付（山と丸の写真アイコン）
+export function ImageIcon({ size = 24, className }: IconProps) {
+  return (
+    <svg width={size} height={size} className={className} {...common}>
+      <rect x="3" y="3" width="18" height="18" rx="2" />
+      <circle cx="8.5" cy="8.5" r="1.5" />
+      <polyline points="21 15 16 10 5 21" />
+    </svg>
+  );
+}
+
 // エクスポート（下矢印＋受け皿）
 export function ExportIcon({ size = 24, className }: IconProps) {
   return (

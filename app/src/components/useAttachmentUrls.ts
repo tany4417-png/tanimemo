@@ -4,7 +4,12 @@ import { getImageBlob } from "../lib/attachments";
 import { db } from "../lib/db";
 import type { AttachmentMeta } from "../lib/types";
 
-export function useAttachmentUrls(noteId: string, limit?: number): { metas: AttachmentMeta[]; urls: Record<string, string> } {
+export function useAttachmentUrls(
+  noteId: string,
+  limit?: number,
+  opts?: { thumb?: boolean }
+): { metas: AttachmentMeta[]; urls: Record<string, string> } {
+  const thumb = opts?.thumb ?? false;
   const metas = useLiveQuery(
     async () => {
       const all = await db.attachments.where("noteId").equals(noteId).filter((a) => a.deleted === 0).toArray();
@@ -21,7 +26,7 @@ export function useAttachmentUrls(noteId: string, limit?: number): { metas: Atta
       const token = localStorage.getItem("tanimemo.token") ?? "";
       const next: Record<string, string> = {};
       for (const m of metas) {
-        const blob = await getImageBlob(m.id, token);
+        const blob = await getImageBlob(m.id, token, undefined, { thumb });
         if (blob) {
           const u = URL.createObjectURL(blob);
           created.push(u);
@@ -34,6 +39,6 @@ export function useAttachmentUrls(noteId: string, limit?: number): { metas: Atta
       alive = false;
       created.forEach((u) => URL.revokeObjectURL(u));
     };
-  }, [metas]);
+  }, [metas, thumb]);
   return { metas, urls };
 }

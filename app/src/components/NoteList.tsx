@@ -519,7 +519,7 @@ function SwipeableCard({
 }
 
 export function CardThumbs({ noteId }: { noteId: string }) {
-  const { metas, urls } = useAttachmentUrls(noteId, 3);
+  const { metas, urls } = useAttachmentUrls(noteId, 3, { thumb: true });
   if (metas.length === 0) return null;
   return (
     <div className="card-thumbs">

@@ -34,6 +34,9 @@ h2 {
 .toolbar .search { flex: 1; min-width: 0; }
 input, select, textarea, button { font: inherit; }
 input, select, textarea {
+  /* iOS Safariは16px未満のフォーカスで自動ズームしてしまう。ピンチズームも解除されないため
+     16px固定でズームの揺れ自体を起こさせない（buttonは対象外＝フォーカスしても拡大しないため据え置き） */
+  font-size: 16px;
   border: 1px solid var(--rule); border-radius: 8px; padding: 8px; background: var(--card); color: var(--ink);
 }
 button {
