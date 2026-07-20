@@ -242,9 +242,10 @@ describe("flattenFolderTree", () => {
       deleted: 0,
       dirty: 0,
     });
-    // x -> y -> x という循環（本来moveFolderで防止されるが、データ破損時の防御として検証）
+    // x -> y -> x という循環（本来moveFolderで防止されるが、データ破損時の防御として検証）。
+    // ルート(null)からは循環に到達しないため、循環の内側(xの子)から辿ってガードを通す
     const folders: Folder[] = [mk("x", "x", "y"), mk("y", "y", "x")];
-    const flat = flattenFolderTree(folders);
-    expect(flat.length).toBeLessThanOrEqual(2);
+    const flat = flattenFolderTree(folders, "x", 0, new Set(["x"]));
+    expect(flat.map((e) => e.folder.id)).toEqual(["y"]);
   });
 });
