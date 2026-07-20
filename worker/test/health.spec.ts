@@ -1,4 +1,4 @@
-import { SELF } from "cloudflare:test";
+import { env, SELF } from "cloudflare:test";
 import { describe, it, expect } from "vitest";
 
 describe("認証とhealth", () => {
@@ -16,7 +16,7 @@ describe("認証とhealth", () => {
 
   it("正しいトークンで200と{ok:true}", async () => {
     const res = await SELF.fetch("https://example.com/api/health", {
-      headers: { Authorization: "Bearer test-token" },
+      headers: { Authorization: `Bearer ${env.API_TOKEN}` },
     });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true });
