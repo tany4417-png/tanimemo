@@ -3,12 +3,23 @@ import { marked } from "marked";
 
 marked.use({ gfm: true, breaks: true });
 
+// vitestのテスト環境(node、DOM無し)ではDOMPurifyがwindow無しのfactory関数のままで
+// addHookを持たない。ブラウザ実行時（本来の対象環境）でのみフックを登録する。
+if (typeof DOMPurify.addHook === "function") {
+  DOMPurify.addHook("afterSanitizeAttributes", (node) => {
+    if (node.tagName === "A") {
+      node.setAttribute("target", "_blank");
+      node.setAttribute("rel", "noopener noreferrer");
+    }
+    if (node.tagName === "INPUT" && node.getAttribute("type") === "checkbox") {
+      node.removeAttribute("disabled");
+    }
+  });
+}
+
 export function renderMarkdown(body: string): string {
   const html = marked.parse(body, { async: false }) as string;
-  const clean = DOMPurify.sanitize(html);
-  return clean
-    .replace(/(<input[^>]*?)\sdisabled(="")?/g, "$1")
-    .replace(/<a href=/g, '<a target="_blank" rel="noopener" href=');
+  return DOMPurify.sanitize(html);
 }
 
 export function toggleCheckbox(body: string, index: number): string {

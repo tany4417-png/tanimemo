@@ -1,6 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
+import { db, resetDbForTests } from "./db";
 import type { Note } from "./types";
-import { mimeToExt, noteContent, notePath, slugify } from "./export";
+import { exportZip, localYmd, mimeToExt, noteContent, notePath, slugify } from "./export";
+
+beforeEach(async () => {
+  await resetDbForTests();
+});
 
 function n(over: Partial<Note> = {}): Note {
   return {
@@ -31,5 +36,30 @@ describe("エクスポートの純関数", () => {
     expect(c).toContain('tags: ["家"]');
     expect(c).toContain("importance: 2");
     expect(c.endsWith("買い物メモ\n- [ ] 牛乳\n")).toBe(true);
+  });
+
+  it("localYmdはローカル日付をYYYY-MM-DDで返す", () => {
+    expect(localYmd(new Date("2026-07-20T09:00:00"))).toBe("2026-07-20");
+  });
+});
+
+describe("exportZip", () => {
+  it("実体が無い添付（token空）はmissingImagesにカウントされ除外される", async () => {
+    await db.attachments.put({
+      id: "X", noteId: "N", mime: "image/png", size: 1, createdAt: 1, updatedAt: 1, deleted: 0, dirty: 0,
+    });
+    const { blob, missingImages } = await exportZip();
+    expect(missingImages).toBe(1);
+    expect(blob).toBeInstanceOf(Blob);
+  });
+
+  it("実体がある添付はmissingImages0でzip Blobが返る", async () => {
+    await db.attachments.put({
+      id: "Y", noteId: "N", mime: "image/png", size: 1, createdAt: 1, updatedAt: 1, deleted: 0, dirty: 0,
+    });
+    await db.attachmentBlobs.put({ id: "Y", blob: new Blob([new Uint8Array([1])], { type: "image/png" }) });
+    const { blob, missingImages } = await exportZip();
+    expect(missingImages).toBe(0);
+    expect(blob).toBeInstanceOf(Blob);
   });
 });

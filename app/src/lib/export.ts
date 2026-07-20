@@ -1,4 +1,5 @@
 import { strToU8, zipSync } from "fflate";
+import { getImageBlob } from "./attachments";
 import { db } from "./db";
 import { firstLineTitle } from "./markdown";
 import type { Note } from "./types";
@@ -13,10 +14,12 @@ export function mimeToExt(mime: string): string {
   return map[mime] ?? "bin";
 }
 
+export function localYmd(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 export function notePath(n: Note): string {
-  const d = new Date(n.createdAt);
-  const ymd = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-  return `${ymd}-${slugify(firstLineTitle(n.body))}-${n.id.slice(-4)}.md`;
+  return `${localYmd(new Date(n.createdAt))}-${slugify(firstLineTitle(n.body))}-${n.id.slice(-4)}.md`;
 }
 
 export function noteContent(n: Note): string {
@@ -33,14 +36,24 @@ export function noteContent(n: Note): string {
   ].join("\n");
 }
 
-export async function exportZip(): Promise<Blob> {
+export async function exportZip(
+  token = "",
+  fetchFn: typeof fetch = fetch
+): Promise<{ blob: Blob; missingImages: number }> {
   const files: Record<string, Uint8Array> = {};
   const notes = (await db.notes.toArray()).filter((n) => n.deleted === 0);
   for (const n of notes) files[notePath(n)] = strToU8(noteContent(n));
   const atts = (await db.attachments.toArray()).filter((a) => a.deleted === 0);
+  let missingImages = 0;
   for (const a of atts) {
     const rec = await db.attachmentBlobs.get(a.id);
-    if (rec) files[`images/${a.id}.${mimeToExt(a.mime)}`] = new Uint8Array(await rec.blob.arrayBuffer());
+    let blob = rec?.blob ?? null;
+    if (!blob && token) blob = await getImageBlob(a.id, token, fetchFn);
+    if (blob) {
+      files[`images/${a.id}.${mimeToExt(a.mime)}`] = new Uint8Array(await blob.arrayBuffer());
+    } else {
+      missingImages += 1;
+    }
   }
-  return new Blob([zipSync(files)], { type: "application/zip" });
+  return { blob: new Blob([zipSync(files)], { type: "application/zip" }), missingImages };
 }

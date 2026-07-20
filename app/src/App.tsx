@@ -6,7 +6,7 @@ import { Settings } from "./components/Settings";
 import { SyncStatus } from "./components/SyncStatus";
 import { addImageFromBlob } from "./lib/attachments";
 import { db } from "./lib/db";
-import { exportZip } from "./lib/export";
+import { exportZip, localYmd } from "./lib/export";
 import { allTags, createNote, listActiveNotes, softDeleteNote, updateNote, type NotePatch } from "./lib/notes";
 import { filterByTags, searchNotes, sortNotes, type SortMode } from "./lib/sort";
 import { runSync } from "./lib/sync";
@@ -150,10 +150,13 @@ export default function App() {
           }}
           onBack={() => setView({ name: "list" })}
           onExport={async () => {
-            const blob = await exportZip();
+            const { blob, missingImages } = await exportZip(token);
+            if (missingImages > 0) {
+              alert(`未取得の画像 ${missingImages}件はこの端末に無いため含まれていません`);
+            }
             const a = document.createElement("a");
             a.href = URL.createObjectURL(blob);
-            a.download = `タニメモ-エクスポート-${new Date().toISOString().slice(0, 10)}.zip`;
+            a.download = `タニメモ-エクスポート-${localYmd(new Date())}.zip`;
             a.click();
             URL.revokeObjectURL(a.href);
           }}

@@ -40,4 +40,15 @@ describe("/api/share", () => {
     const res = await SELF.fetch("https://example.com/api/share", { method: "POST", headers: TOKEN, body: new FormData() });
     expect(res.status).toBe(400);
   });
+
+  it("CRLFはLFに正規化される", async () => {
+    const form = new FormData();
+    form.append("text", "a\r\n- [ ] x");
+    const res = await SELF.fetch("https://example.com/api/share", { method: "POST", headers: TOKEN, body: form });
+    expect(res.status).toBe(200);
+    const { noteId } = (await res.json()) as any;
+    const data = await pull();
+    const note = data.notes.find((n: any) => n.id === noteId);
+    expect(note.body).toBe("a\n- [ ] x");
+  });
 });

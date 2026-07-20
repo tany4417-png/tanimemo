@@ -38,4 +38,11 @@ describe("getImageBlob", () => {
     const f = (async () => new Response("", { status: 404 })) as typeof fetch;
     expect(await getImageBlob("NONE", "tok", f)).toBeNull();
   });
+
+  it("オフライン等のネットワーク例外ならnull", async () => {
+    const f = (async () => {
+      throw new TypeError("Failed to fetch");
+    }) as typeof fetch;
+    expect(await getImageBlob("X", "tok", f)).toBeNull();
+  });
 });

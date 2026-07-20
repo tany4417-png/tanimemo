@@ -18,7 +18,12 @@ export async function addImageFromBlob(noteId: string, blob: Blob): Promise<Atta
 export async function getImageBlob(id: string, token: string, fetchFn: typeof fetch = fetch): Promise<Blob | null> {
   const cached = await db.attachmentBlobs.get(id);
   if (cached) return cached.blob;
-  const res = await fetchFn(`/api/attachments/${id}`, { headers: { Authorization: `Bearer ${token}` } });
+  let res: Response;
+  try {
+    res = await fetchFn(`/api/attachments/${id}`, { headers: { Authorization: `Bearer ${token}` } });
+  } catch {
+    return null;
+  }
   if (!res.ok) return null;
   const blob = await res.blob();
   await db.attachmentBlobs.put({ id, blob });
