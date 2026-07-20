@@ -5,13 +5,14 @@ import { useAttachmentUrls } from "./useAttachmentUrls";
 
 type Props = {
   note: Note;
+  startEditing?: boolean;
   onChange: (patch: { body?: string; tags?: string[]; importance?: 0 | 1 | 2 | 3 }) => void;
   onDelete: () => void;
   onBack: () => void;
 };
 
-export function NoteScreen({ note, onChange, onDelete, onBack }: Props) {
-  const [editing, setEditing] = useState(note.body === "");
+export function NoteScreen({ note, startEditing, onChange, onDelete, onBack }: Props) {
+  const [editing, setEditing] = useState(startEditing ?? false);
   const [draft, setDraft] = useState(note.body);
   const html = useMemo(() => renderMarkdown(note.body), [note.body]);
 

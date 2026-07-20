@@ -49,3 +49,8 @@ button.danger { color: #b03030; }
 .thumb { width: 96px; height: 96px; object-fit: cover; border-radius: 8px; border: 1px solid #e5dfd2; cursor: pointer; }
 .overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.85); display: flex; align-items: center; justify-content: center; z-index: 10; }
 .overlay img { max-width: 96vw; max-height: 96vh; }
+.swipe-wrap { position: relative; margin-bottom: 8px; }
+.swipe-wrap .card { margin-bottom: 0; position: relative; user-select: none; }
+.swipe-bg { position: absolute; inset: 0; display: flex; align-items: center; justify-content: flex-end; padding-right: 18px; background: #b03030; color: #fff; border-radius: 10px; font-weight: 600; }
+.trash-note { font-size: 0.85rem; color: #8a8474; }
+.trash-card button { margin-top: 6px; }

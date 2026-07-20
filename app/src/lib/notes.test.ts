@@ -1,6 +1,15 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { resetDbForTests } from "./db";
-import { allTags, createNote, listActiveNotes, softDeleteNote, updateNote } from "./notes";
+import { db, resetDbForTests } from "./db";
+import {
+  allTags,
+  createNote,
+  listActiveNotes,
+  listTrashedNotes,
+  purgeExpiredTrashLocal,
+  restoreNote,
+  softDeleteNote,
+  updateNote,
+} from "./notes";
 
 beforeEach(async () => {
   await resetDbForTests();
@@ -37,5 +46,51 @@ describe("メモCRUD", () => {
     await createNote("2", ["a", "c"]);
     const notes = await listActiveNotes();
     expect(allTags(notes)).toEqual(["a", "b", "c"]);
+  });
+});
+
+describe("ゴミ箱", () => {
+  it("softDelete後、listTrashedNotesに載りlistActiveNotesには載らない", async () => {
+    const n = await createNote("消すメモ");
+    await softDeleteNote(n.id);
+    const active = await listActiveNotes();
+    const trashed = await listTrashedNotes();
+    expect(active.find((x) => x.id === n.id)).toBeUndefined();
+    expect(trashed.find((x) => x.id === n.id)).toBeDefined();
+  });
+
+  it("restoreNoteで戻り、dirty=1が付く", async () => {
+    const n = await createNote("復元するメモ");
+    await softDeleteNote(n.id);
+    const restored = await restoreNote(n.id);
+    expect(restored.deleted).toBe(0);
+    expect(restored.dirty).toBe(1);
+    const active = await listActiveNotes();
+    expect(active.find((x) => x.id === n.id)).toBeDefined();
+  });
+
+  it("purgeExpiredTrashLocalは31日前に削除されたメモと添付を物理削除し、1日前のものは残す", async () => {
+    const now = Date.now();
+    const day = 24 * 60 * 60 * 1000;
+
+    const old = await createNote("31日前に消えたメモ");
+    await db.notes.update(old.id, { deleted: 1, updatedAt: now - 31 * day });
+    await db.attachments.put({
+      id: "att-old", noteId: old.id, mime: "image/png", size: 1,
+      createdAt: now - 31 * day, updatedAt: now - 31 * day, deleted: 0, dirty: 0,
+    });
+    await db.attachmentBlobs.put({ id: "att-old", blob: new Blob([new Uint8Array([1])]) });
+
+    const recent = await createNote("1日前に消えたメモ");
+    await db.notes.update(recent.id, { deleted: 1, updatedAt: now - 1 * day });
+
+    const purged = await purgeExpiredTrashLocal(now);
+    expect(purged).toBe(1);
+
+    expect(await db.notes.get(old.id)).toBeUndefined();
+    expect(await db.attachments.get("att-old")).toBeUndefined();
+    expect(await db.attachmentBlobs.get("att-old")).toBeUndefined();
+
+    expect(await db.notes.get(recent.id)).toBeDefined();
   });
 });

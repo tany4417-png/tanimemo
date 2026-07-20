@@ -1,3 +1,4 @@
+import { useRef, useState } from "react";
 import { firstLineTitle, urlOnly } from "../lib/markdown";
 import type { SortMode } from "../lib/sort";
 import type { Note } from "../lib/types";
@@ -14,6 +15,7 @@ type Props = {
   onQuery: (q: string) => void;
   onOpen: (id: string) => void;
   onCreate: () => void;
+  onDelete: (id: string) => void;
 };
 
 export function NoteList(p: Props) {
@@ -36,7 +38,7 @@ export function NoteList(p: Props) {
         ))}
       </div>
       {p.notes.map((n) => (
-        <div key={n.id} className="card" onClick={() => p.onOpen(n.id)}>
+        <SwipeableCard key={n.id} onDelete={() => p.onDelete(n.id)} onOpen={() => p.onOpen(n.id)}>
           <div className="card-title">
             {n.importance > 0 && <span className="card-stars">{"★".repeat(n.importance)}</span>}
             {(() => {
@@ -45,7 +47,7 @@ export function NoteList(p: Props) {
                 <a className="card-link" href={url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}>
                   {url}
                 </a>
-              ) : (
+              ) : n.body.trim() === "" ? null : (
                 firstLineTitle(n.body)
               );
             })()}
@@ -54,9 +56,53 @@ export function NoteList(p: Props) {
           <div className="card-sub">
             {new Date(n.updatedAt).toLocaleString("ja-JP")} {n.tags.map((t) => `#${t}`).join(" ")}
           </div>
-        </div>
+        </SwipeableCard>
       ))}
       {p.notes.length === 0 && <p className="empty">メモがありません</p>}
+    </div>
+  );
+}
+
+function SwipeableCard({ onDelete, onOpen, children }: { onDelete: () => void; onOpen: () => void; children: React.ReactNode }) {
+  const [dx, setDx] = useState(0);
+  const start = useRef<{ x: number; y: number } | null>(null);
+  const dragging = useRef(false);
+
+  function reset() {
+    setDx(0);
+    start.current = null;
+    dragging.current = false;
+  }
+  return (
+    <div className="swipe-wrap">
+      <div className="swipe-bg">削除</div>
+      <div
+        className="card"
+        style={{ transform: `translateX(${dx}px)`, touchAction: "pan-y" }}
+        onPointerDown={(e) => {
+          start.current = { x: e.clientX, y: e.clientY };
+          dragging.current = false;
+        }}
+        onPointerMove={(e) => {
+          if (!start.current) return;
+          const dxNow = e.clientX - start.current.x;
+          const dyNow = e.clientY - start.current.y;
+          if (!dragging.current && Math.abs(dxNow) > 12 && Math.abs(dxNow) > Math.abs(dyNow)) {
+            dragging.current = true;
+            (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+          }
+          if (dragging.current) setDx(Math.min(0, dxNow));
+        }}
+        onPointerUp={(e) => {
+          const isLink = (e.target as HTMLElement).closest("a") !== null;
+          if (dragging.current && dx < -90) onDelete();
+          else if (!dragging.current && start.current && !isLink) onOpen();
+          reset();
+        }}
+        onPointerCancel={reset}
+      >
+        {children}
+      </div>
     </div>
   );
 }

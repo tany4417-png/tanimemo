@@ -30,3 +30,27 @@ export async function listActiveNotes(): Promise<Note[]> {
 export function allTags(notes: Note[]): string[] {
   return [...new Set(notes.flatMap((n) => n.tags))].sort();
 }
+
+export const TRASH_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+
+export async function listTrashedNotes(): Promise<Note[]> {
+  return (await db.notes.toArray()).filter((n) => n.deleted === 1).sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
+export async function restoreNote(id: string): Promise<Note> {
+  return updateNote(id, { deleted: 0 });
+}
+
+export async function purgeExpiredTrashLocal(now = Date.now()): Promise<number> {
+  const cutoff = now - TRASH_RETENTION_MS;
+  const expired = (await db.notes.toArray()).filter((n) => n.deleted === 1 && n.updatedAt < cutoff);
+  if (expired.length === 0) return 0;
+  const ids = new Set(expired.map((n) => n.id));
+  const atts = (await db.attachments.toArray()).filter((a) => ids.has(a.noteId));
+  await db.transaction("rw", db.notes, db.attachments, db.attachmentBlobs, async () => {
+    await db.notes.bulkDelete([...ids]);
+    await db.attachments.bulkDelete(atts.map((a) => a.id));
+    await db.attachmentBlobs.bulkDelete(atts.map((a) => a.id));
+  });
+  return expired.length;
+}

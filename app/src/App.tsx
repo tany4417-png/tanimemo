@@ -4,14 +4,15 @@ import { NoteList } from "./components/NoteList";
 import { NoteScreen } from "./components/NoteScreen";
 import { Settings } from "./components/Settings";
 import { SyncStatus } from "./components/SyncStatus";
+import { TrashScreen } from "./components/TrashScreen";
 import { addImageFromBlob } from "./lib/attachments";
 import { db } from "./lib/db";
 import { exportZip, localYmd } from "./lib/export";
-import { allTags, createNote, listActiveNotes, softDeleteNote, updateNote, type NotePatch } from "./lib/notes";
+import { allTags, createNote, listActiveNotes, purgeExpiredTrashLocal, softDeleteNote, updateNote, type NotePatch } from "./lib/notes";
 import { filterByTags, searchNotes, sortNotes, type SortMode } from "./lib/sort";
 import { runSync } from "./lib/sync";
 
-type View = { name: "list" } | { name: "note"; id: string } | { name: "settings" };
+type View = { name: "list" } | { name: "note"; id: string; isNew?: boolean } | { name: "settings" } | { name: "trash" };
 
 export default function App() {
   const [view, setView] = useState<View>({ name: "list" });
@@ -67,6 +68,10 @@ export default function App() {
   }, [syncNow]);
 
   useEffect(() => {
+    void purgeExpiredTrashLocal();
+  }, []);
+
+  useEffect(() => {
     const onOnline = () => void syncNow();
     const onVisible = () => {
       if (document.visibilityState === "visible") void syncNow();
@@ -88,7 +93,7 @@ export default function App() {
       const files = items.filter((i) => i.kind === "file").map((i) => i.getAsFile()).filter((f): f is File => f !== null);
       const images = files.filter((f) => f.type.startsWith("image/"));
       if (images.length > 0) {
-        const n = await createNote("(画像)", ["受信"]);
+        const n = await createNote("", ["受信"]);
         for (const f of images) await addImageFromBlob(n.id, f);
         scheduleSync();
         return;
@@ -105,7 +110,7 @@ export default function App() {
 
   const onCreate = useCallback(async () => {
     const n = await createNote();
-    setView({ name: "note", id: n.id });
+    setView({ name: "note", id: n.id, isNew: true });
   }, []);
 
   return (
@@ -123,11 +128,16 @@ export default function App() {
           onQuery={setQuery}
           onOpen={(id) => setView({ name: "note", id })}
           onCreate={onCreate}
+          onDelete={async (id) => {
+            await softDeleteNote(id);
+            scheduleSync();
+          }}
         />
       )}
       {view.name === "note" && current && (
         <NoteScreen
           note={current}
+          startEditing={view.name === "note" && view.isNew === true}
           onChange={async (patch) => {
             await updateNote(current.id, patch as NotePatch);
             scheduleSync();
@@ -160,7 +170,11 @@ export default function App() {
             a.click();
             URL.revokeObjectURL(a.href);
           }}
+          onTrash={() => setView({ name: "trash" })}
         />
+      )}
+      {view.name === "trash" && (
+        <TrashScreen onBack={() => setView({ name: "settings" })} onRestored={() => scheduleSync()} />
       )}
     </main>
   );
