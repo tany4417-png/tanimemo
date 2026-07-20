@@ -8,7 +8,7 @@ import { TrashScreen } from "./components/TrashScreen";
 import { addImageFromBlob } from "./lib/attachments";
 import { db } from "./lib/db";
 import { exportZip, localYmd } from "./lib/export";
-import { createFolder, deleteFolderKeepingContents, folderPath, listChildFolders, renameFolder } from "./lib/folders";
+import { createFolder, deleteFolderKeepingContents, folderPath, listChildFolders, moveFolder, moveNote, renameFolder } from "./lib/folders";
 import { allTags, createNote, listActiveNotes, purgeExpiredTrashLocal, softDeleteNote, updateNote, type NotePatch } from "./lib/notes";
 import { filterByTags, searchNotes, sortNotes, type SortMode } from "./lib/sort";
 import { runSync } from "./lib/sync";
@@ -149,6 +149,22 @@ export default function App() {
     [scheduleSync]
   );
 
+  const onMoveNote = useCallback(
+    async (noteId: string, folderId: string | null) => {
+      await moveNote(noteId, folderId);
+      scheduleSync();
+    },
+    [scheduleSync]
+  );
+
+  const onMoveFolder = useCallback(
+    async (id: string, parentId: string | null) => {
+      const moved = await moveFolder(id, parentId);
+      if (moved) scheduleSync();
+    },
+    [scheduleSync]
+  );
+
   return (
     <main className="app">
       <SyncStatus status={status} pending={pending} lastSync={lastSync} onSync={() => void syncNow()} onSettings={() => setView({ name: "settings" })} />
@@ -174,6 +190,8 @@ export default function App() {
           onCreateFolder={onCreateFolder}
           onRenameCurrentFolder={onRenameCurrentFolder}
           onDeleteFolder={onDeleteFolder}
+          onMoveNote={onMoveNote}
+          onMoveFolder={onMoveFolder}
         />
       )}
       {view.name === "note" && current && (
