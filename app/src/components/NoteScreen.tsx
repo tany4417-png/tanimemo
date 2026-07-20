@@ -76,7 +76,7 @@ export function Gallery({ noteId }: { noteId: string }) {
     []
   );
   const [urls, setUrls] = useState<Record<string, string>>({});
-  const [full, setFull] = useState<string | null>(null);
+  const [fullId, setFullId] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -103,11 +103,11 @@ export function Gallery({ noteId }: { noteId: string }) {
   return (
     <>
       <div className="gallery">
-        {metas.map((m) => urls[m.id] && <img key={m.id} className="thumb" src={urls[m.id]} onClick={() => setFull(urls[m.id])} alt="" />)}
+        {metas.map((m) => urls[m.id] && <img key={m.id} className="thumb" src={urls[m.id]} onClick={() => setFullId(m.id)} alt="" />)}
       </div>
-      {full && (
-        <div className="overlay" onClick={() => setFull(null)}>
-          <img src={full} alt="" />
+      {fullId && urls[fullId] && (
+        <div className="overlay" onClick={() => setFullId(null)}>
+          <img src={urls[fullId]} alt="" />
         </div>
       )}
     </>

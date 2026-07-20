@@ -81,6 +81,8 @@ export default function App() {
   useEffect(() => {
     async function onPaste(e: ClipboardEvent) {
       if (view.name !== "list") return;
+      const target = e.target as HTMLElement | null;
+      if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) return;
       const items = [...(e.clipboardData?.items ?? [])];
       const files = items.filter((i) => i.kind === "file").map((i) => i.getAsFile()).filter((f): f is File => f !== null);
       const images = files.filter((f) => f.type.startsWith("image/"));
