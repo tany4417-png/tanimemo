@@ -24,6 +24,9 @@ button.danger { color: #b03030; }
 .card-title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .card-stars { color: #d99a00; margin-right: 4px; }
 .card-sub { font-size: 0.78rem; color: #8a8474; margin-top: 2px; }
+.card-link { color: #2b6cb0; }
+.card-thumbs { display: flex; gap: 6px; margin-top: 6px; }
+.card-thumb { width: 48px; height: 48px; object-fit: cover; border-radius: 6px; border: 1px solid #e5dfd2; }
 .empty { color: #8a8474; text-align: center; padding: 40px 0; }
 .note { display: flex; flex-direction: column; min-height: 95vh; }
 .stars { display: flex; }

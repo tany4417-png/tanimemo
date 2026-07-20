@@ -41,3 +41,9 @@ export function firstLineTitle(body: string): string {
   const line = body.split("\n").find((l) => l.trim() !== "") ?? "";
   return line.replace(/^#+\s*/, "").trim() || "(無題)";
 }
+
+export function urlOnly(body: string): string | null {
+  const lines = body.split("\n").map((l) => l.trim()).filter((l) => l !== "");
+  if (lines.length === 1 && /^https?:\/\/\S+$/.test(lines[0])) return lines[0];
+  return null;
+}

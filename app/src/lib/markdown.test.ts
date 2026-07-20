@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { firstLineTitle, toggleCheckbox } from "./markdown";
+import { firstLineTitle, toggleCheckbox, urlOnly } from "./markdown";
 
 describe("toggleCheckbox", () => {
   const body = "買い物\n- [ ] 牛乳\n- [x] パン\n  - [ ] 子タスク";
@@ -32,5 +32,27 @@ describe("firstLineTitle", () => {
 
   it("空なら(無題)", () => {
     expect(firstLineTitle("")).toBe("(無題)");
+  });
+});
+
+describe("urlOnly", () => {
+  it("URL1行だけならそのURLを返す", () => {
+    expect(urlOnly("https://example.com/path")).toBe("https://example.com/path");
+  });
+
+  it("前後に空行があってもURL1行なら返す", () => {
+    expect(urlOnly("\n\nhttps://example.com\n\n")).toBe("https://example.com");
+  });
+
+  it("URL＋本文の2行ならnull", () => {
+    expect(urlOnly("https://example.com\n本文")).toBeNull();
+  });
+
+  it("ただのテキストならnull", () => {
+    expect(urlOnly("ただのメモ")).toBeNull();
+  });
+
+  it("ftp://などhttps以外ならnull", () => {
+    expect(urlOnly("ftp://example.com/file")).toBeNull();
   });
 });

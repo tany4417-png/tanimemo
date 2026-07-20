@@ -1,6 +1,7 @@
-import { firstLineTitle } from "../lib/markdown";
+import { firstLineTitle, urlOnly } from "../lib/markdown";
 import type { SortMode } from "../lib/sort";
 import type { Note } from "../lib/types";
+import { useAttachmentUrls } from "./useAttachmentUrls";
 
 type Props = {
   notes: Note[];
@@ -38,14 +39,34 @@ export function NoteList(p: Props) {
         <div key={n.id} className="card" onClick={() => p.onOpen(n.id)}>
           <div className="card-title">
             {n.importance > 0 && <span className="card-stars">{"★".repeat(n.importance)}</span>}
-            {firstLineTitle(n.body)}
+            {(() => {
+              const url = urlOnly(n.body);
+              return url ? (
+                <a className="card-link" href={url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}>
+                  {url}
+                </a>
+              ) : (
+                firstLineTitle(n.body)
+              );
+            })()}
           </div>
+          <CardThumbs noteId={n.id} />
           <div className="card-sub">
             {new Date(n.updatedAt).toLocaleString("ja-JP")} {n.tags.map((t) => `#${t}`).join(" ")}
           </div>
         </div>
       ))}
       {p.notes.length === 0 && <p className="empty">メモがありません</p>}
+    </div>
+  );
+}
+
+function CardThumbs({ noteId }: { noteId: string }) {
+  const { metas, urls } = useAttachmentUrls(noteId, 3);
+  if (metas.length === 0) return null;
+  return (
+    <div className="card-thumbs">
+      {metas.map((m) => urls[m.id] && <img key={m.id} className="card-thumb" src={urls[m.id]} alt="" />)}
     </div>
   );
 }

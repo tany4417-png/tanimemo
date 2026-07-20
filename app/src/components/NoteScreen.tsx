@@ -1,9 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
-import { useLiveQuery } from "dexie-react-hooks";
-import { getImageBlob } from "../lib/attachments";
-import { db } from "../lib/db";
+import { useMemo, useState } from "react";
 import { renderMarkdown, toggleCheckbox } from "../lib/markdown";
 import type { Note } from "../lib/types";
+import { useAttachmentUrls } from "./useAttachmentUrls";
 
 type Props = {
   note: Note;
@@ -70,35 +68,8 @@ export function NoteScreen({ note, onChange, onDelete, onBack }: Props) {
 }
 
 export function Gallery({ noteId }: { noteId: string }) {
-  const metas = useLiveQuery(
-    () => db.attachments.where("noteId").equals(noteId).filter((a) => a.deleted === 0).toArray(),
-    [noteId],
-    []
-  );
-  const [urls, setUrls] = useState<Record<string, string>>({});
+  const { metas, urls } = useAttachmentUrls(noteId);
   const [fullId, setFullId] = useState<string | null>(null);
-
-  useEffect(() => {
-    let alive = true;
-    const created: string[] = [];
-    void (async () => {
-      const token = localStorage.getItem("tanimemo.token") ?? "";
-      const next: Record<string, string> = {};
-      for (const m of metas) {
-        const blob = await getImageBlob(m.id, token);
-        if (blob) {
-          const u = URL.createObjectURL(blob);
-          created.push(u);
-          next[m.id] = u;
-        }
-      }
-      if (alive) setUrls(next);
-    })();
-    return () => {
-      alive = false;
-      created.forEach((u) => URL.revokeObjectURL(u));
-    };
-  }, [metas]);
 
   return (
     <>
