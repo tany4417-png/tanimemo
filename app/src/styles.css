@@ -10,7 +10,31 @@
   --shadow-1: 0 1px 2px rgba(42,39,34,.06);
   --shadow-2: 0 4px 12px rgba(42,39,34,.05);
   --shadow-lift: 0 8px 24px rgba(42,39,34,.14);
+
+  /* アクセントパレット（タグ・フォルダの名前ハッシュ彩色、ボタンの役割色に使う。tint=--t-*背景／deep=--c-*文字・ボーダー） */
+  --c-red: #C0504A;    --t-red: #F7E4E2;
+  --c-orange: #C07A3A; --t-orange: #F8EBDD;
+  --c-amber: #B08F2A;  --t-amber: #F6EFD8;
+  --c-green: #5E8C4A;  --t-green: #E7F0E0;
+  --c-teal: #3E8C7E;   --t-teal: #DFF0EC;
+  --c-blue: #2B5F8A;   --t-blue: #E1EBF2;
+  --c-violet: #6E5A9E; --t-violet: #EAE5F4;
+  --c-pink: #B0527E;   --t-pink: #F7E2EC;
 }
+
+/* accentClassFor()が返すクラス。--acc/--acc-tintを経由して各要素のtint+deepパターンに使う。
+   要素自身にこのクラスが付いていない場合はvar()の第2引数（フォールバック）が効く */
+.acc-red    { --acc: var(--c-red);    --acc-tint: var(--t-red); }
+.acc-orange { --acc: var(--c-orange); --acc-tint: var(--t-orange); }
+.acc-amber  { --acc: var(--c-amber);  --acc-tint: var(--t-amber); }
+.acc-green  { --acc: var(--c-green);  --acc-tint: var(--t-green); }
+.acc-teal   { --acc: var(--c-teal);   --acc-tint: var(--t-teal); }
+.acc-blue   { --acc: var(--c-blue);   --acc-tint: var(--t-blue); }
+.acc-violet { --acc: var(--c-violet); --acc-tint: var(--t-violet); }
+.acc-pink   { --acc: var(--c-pink);   --acc-tint: var(--t-pink); }
+
+/* ボタンの役割色（tint+deepパターン）。危険系（.danger）は対象外で--vermilionのまま */
+button.tint { background: var(--acc-tint, var(--card)); border-color: var(--acc, var(--rule)); color: var(--acc, var(--ink)); }
 
 * { box-sizing: border-box; }
 html, body {
@@ -65,9 +89,16 @@ button.icon-btn { width: 36px; height: 36px; padding: 0; }
 .tagbar { display: flex; gap: 6px; flex-wrap: wrap; padding-bottom: 8px; }
 .tag {
   min-height: auto; padding: 4px 10px; border-radius: 999px; font-size: 13px;
-  border: 1px solid var(--rule); background: var(--card); color: var(--ink-soft);
+  border: 1px solid var(--acc, var(--rule)); background: var(--acc-tint, var(--card)); color: var(--acc, var(--ink-soft));
 }
-.tag.active { background: var(--indigo); border-color: var(--indigo); color: #fff; }
+.tag.active { background: var(--acc, var(--indigo)); border-color: var(--acc, var(--indigo)); color: #fff; }
+
+/* card-subの#タグ表示（一覧カード下部）。tagbarの.tagより小さく、テキスト中に収まるチップにする */
+.tag-chip {
+  display: inline-block; padding: 1px 7px; border-radius: 999px; font-size: 11px;
+  border: 1px solid var(--acc, var(--rule)); background: var(--acc-tint, var(--card)); color: var(--acc, var(--ink-soft));
+  margin-left: 4px;
+}
 
 .card {
   background: var(--card); border: 1px solid var(--rule); border-radius: 8px;
@@ -125,6 +156,7 @@ button.icon-btn { width: 36px; height: 36px; padding: 0; }
 .trash-note { font-size: 0.85rem; color: var(--ink-soft); }
 .trash-card button { margin-top: 6px; }
 .trash-folder-title { display: flex; align-items: center; gap: 6px; font-size: 16px; font-weight: 600; }
+.trash-folder-title .folder-icon { color: var(--acc, var(--ink)); }
 .trash-kind {
   font-size: 11px; font-weight: 400; color: var(--ink-soft);
   border: 1px solid var(--rule); border-radius: 999px; padding: 1px 8px;
@@ -146,15 +178,18 @@ button.icon-btn { width: 36px; height: 36px; padding: 0; }
 .folder-card { display: flex; align-items: center; gap: 8px; position: relative; background: #FDFBF5; }
 .folder-card::before {
   content: ""; position: absolute; top: -9px; left: 12px; width: 56px; height: 10px;
-  background: var(--card); border: 1px solid var(--rule); border-bottom: none;
+  background: var(--acc-tint, var(--card)); border: 1px solid var(--acc, var(--rule)); border-bottom: none;
   border-top-left-radius: 4px; border-top-right-radius: 4px;
 }
-.folder-card .folder-icon { flex: none; }
+.folder-card .folder-icon { flex: none; color: var(--acc, var(--ink)); }
 .folder-card .folder-name { flex: 1; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .folder-card .folder-count { font-size: 12px; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
 
 .folder-picker { background: var(--card); border: 1px solid var(--rule); border-radius: 10px; margin-bottom: 8px; overflow: hidden; }
-.folder-picker-item { padding: 10px 12px; border-bottom: 1px solid var(--rule); cursor: pointer; }
+.folder-picker-item {
+  padding: 10px 12px; border-bottom: 1px solid var(--rule); cursor: pointer;
+  border-left: 3px solid var(--acc, transparent);
+}
 .folder-picker-item:last-child { border-bottom: none; }
 .folder-picker-item:hover { background: var(--paper); }
 .folder-picker-item.disabled { color: var(--ink-soft); cursor: default; background: var(--paper); pointer-events: none; }

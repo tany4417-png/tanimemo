@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { addImageFromBlob, getImageBlob } from "../lib/attachments";
+import { accentClassFor } from "../lib/colors";
 import { flattenFolderTree, listAllFolders, moveNote } from "../lib/folders";
 import { renderMarkdown, toggleCheckbox } from "../lib/markdown";
 import type { Note } from "../lib/types";
@@ -89,7 +90,7 @@ export function NoteScreen({ syncBar, note, startEditing, onChange, onDelete, on
               </button>
             ))}
           </span>
-          <button onClick={() => setMovePickerOpen((v) => !v)}>移動…</button>
+          <button className="tint acc-violet" onClick={() => setMovePickerOpen((v) => !v)}>移動…</button>
           <button className="icon-btn" aria-label="写真を添付" onClick={() => fileInputRef.current?.click()}>
             <ImageIcon />
           </button>
@@ -104,7 +105,7 @@ export function NoteScreen({ syncBar, note, startEditing, onChange, onDelete, on
           {editing ? (
             <button className="primary" onClick={save}>保存</button>
           ) : (
-            <button onClick={() => { setDraft(note.body); setEditing(true); }}>編集</button>
+            <button className="tint acc-amber" onClick={() => { setDraft(note.body); setEditing(true); }}>編集</button>
           )}
           <button className="danger" onClick={onDelete}>削除</button>
         </div>
@@ -120,7 +121,7 @@ export function NoteScreen({ syncBar, note, startEditing, onChange, onDelete, on
           {flatFolders.map(({ folder, depth }) => (
             <div
               key={folder.id}
-              className={note.folderId === folder.id ? "folder-picker-item disabled" : "folder-picker-item"}
+              className={`folder-picker-item ${accentClassFor(folder.name)}${note.folderId === folder.id ? " disabled" : ""}`}
               style={{ paddingLeft: `${12 + depth * 16}px` }}
               onClick={() => void moveTo(folder.id)}
             >

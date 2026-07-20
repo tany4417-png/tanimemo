@@ -27,7 +27,7 @@ export function Settings({ syncBar, token, onSave, onBack, onExport, onTrash }: 
       <input id="token" type="password" value={value} onChange={(e) => setValue(e.target.value)} />
       <button className="primary" onClick={() => onSave(value.trim())}>保存</button>
       <hr />
-      <button onClick={onExport}>
+      <button className="tint acc-teal" onClick={onExport}>
         <ExportIcon size={18} />
         全メモをエクスポート（zip）
       </button>

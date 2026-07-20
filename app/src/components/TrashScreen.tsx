@@ -1,4 +1,5 @@
 import { useLiveQuery } from "dexie-react-hooks";
+import { accentClassFor } from "../lib/colors";
 import { listTrashedFolders, restoreFolderWithContents } from "../lib/folders";
 import { firstLineTitle } from "../lib/markdown";
 import { TRASH_RETENTION_MS, listTrashedNotes, restoreNote } from "../lib/notes";
@@ -40,7 +41,7 @@ export function TrashScreen({ syncBar, onBack, onRestored }: Props) {
           const f = row.item;
           return (
             <div key={f.id} className="card trash-card">
-              <div className="trash-folder-title">
+              <div className={`trash-folder-title ${accentClassFor(f.name)}`}>
                 <FolderIcon size={14} className="folder-icon" />
                 <span>{f.name}</span>
                 <span className="trash-kind">フォルダ</span>
@@ -49,6 +50,7 @@ export function TrashScreen({ syncBar, onBack, onRestored }: Props) {
                 削除: {new Date(f.updatedAt).toLocaleString("ja-JP")} / 残り{daysLeft}日
               </div>
               <button
+                className="tint acc-green"
                 onClick={async () => {
                   await restoreFolderWithContents(f.id);
                   onRestored();
@@ -68,6 +70,7 @@ export function TrashScreen({ syncBar, onBack, onRestored }: Props) {
               削除: {new Date(n.updatedAt).toLocaleString("ja-JP")} / 残り{daysLeft}日
             </div>
             <button
+              className="tint acc-green"
               onClick={async () => {
                 await restoreNote(n.id);
                 onRestored();

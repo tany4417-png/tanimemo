@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
+import { accentClassFor } from "../lib/colors";
 import { resolveDropTarget } from "../lib/dnd";
 import { listNotesIn } from "../lib/folders";
 import { isTap, shouldOpenSwipe } from "../lib/gesture";
@@ -82,7 +83,9 @@ export function NoteList(p: Props) {
             <option value="importance">重要度順</option>
             <option value="manual">手動</option>
           </select>
-          {isBrowsingFolder && <button onClick={p.onCreateFolder}>フォルダ＋</button>}
+          {isBrowsingFolder && (
+            <button className="tint acc-teal" onClick={p.onCreateFolder}>フォルダ＋</button>
+          )}
           <button className="primary" onClick={p.onCreate}>新規</button>
         </div>
         {isBrowsingFolder && (
@@ -90,7 +93,11 @@ export function NoteList(p: Props) {
         )}
         <div className="tagbar">
           {p.allTags.map((t) => (
-            <button key={t} className={p.activeTags.includes(t) ? "tag active" : "tag"} onClick={() => p.onToggleTag(t)}>
+            <button
+              key={t}
+              className={`tag ${accentClassFor(t)}${p.activeTags.includes(t) ? " active" : ""}`}
+              onClick={() => p.onToggleTag(t)}
+            >
               {t}
             </button>
           ))}
@@ -147,7 +154,10 @@ export function NoteList(p: Props) {
           </div>
           <CardThumbs noteId={n.id} />
           <div className="card-sub">
-            {new Date(n.updatedAt).toLocaleString("ja-JP")} {n.tags.map((t) => `#${t}`).join(" ")}
+            {new Date(n.updatedAt).toLocaleString("ja-JP")}
+            {n.tags.map((t) => (
+              <span key={t} className={`tag-chip ${accentClassFor(t)}`}>#{t}</span>
+            ))}
           </div>
         </SwipeableCard>
       ))}
@@ -222,7 +232,7 @@ function FolderCard({
       onCloseOthers={onCloseOthers}
       onDelete={onDelete}
       onOpen={onOpen}
-      className="folder-card"
+      className={`folder-card ${accentClassFor(folder.name)}`}
       dragPayload={{ kind: "folder", id: folder.id }}
       currentLocationId={folder.parentId}
       onMoveNote={onMoveNote}
