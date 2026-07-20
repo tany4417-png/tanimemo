@@ -1,0 +1,52 @@
+import { describe, expect, it } from "vitest";
+import type { Note } from "./types";
+import { filterByTags, searchNotes, sortNotes } from "./sort";
+
+function n(id: string, over: Partial<Note> = {}): Note {
+  return { id, body: id, tags: [], importance: 0, createdAt: 0, updatedAt: 0, deleted: 0, dirty: 0, ...over };
+}
+
+describe("sortNotes", () => {
+  it("createdは作成の新しい順", () => {
+    const r = sortNotes([n("a", { createdAt: 1 }), n("b", { createdAt: 3 }), n("c", { createdAt: 2 })], "created");
+    expect(r.map((x) => x.id)).toEqual(["b", "c", "a"]);
+  });
+
+  it("updatedは更新の新しい順", () => {
+    const r = sortNotes([n("a", { updatedAt: 1 }), n("b", { updatedAt: 3 })], "updated");
+    expect(r.map((x) => x.id)).toEqual(["b", "a"]);
+  });
+
+  it("importanceは星の多い順、同星は更新の新しい順", () => {
+    const r = sortNotes(
+      [n("a", { importance: 1, updatedAt: 5 }), n("b", { importance: 3 }), n("c", { importance: 1, updatedAt: 9 })],
+      "importance"
+    );
+    expect(r.map((x) => x.id)).toEqual(["b", "c", "a"]);
+  });
+
+  it("星3はcreated順でも先頭に固定される", () => {
+    const r = sortNotes([n("a", { createdAt: 9 }), n("pin", { createdAt: 1, importance: 3 })], "created");
+    expect(r.map((x) => x.id)).toEqual(["pin", "a"]);
+  });
+
+  it("元配列を破壊しない", () => {
+    const src = [n("a", { createdAt: 1 }), n("b", { createdAt: 2 })];
+    sortNotes(src, "created");
+    expect(src.map((x) => x.id)).toEqual(["a", "b"]);
+  });
+});
+
+describe("filterByTags / searchNotes", () => {
+  it("タグはAND条件", () => {
+    const notes = [n("a", { tags: ["x", "y"] }), n("b", { tags: ["x"] })];
+    expect(filterByTags(notes, ["x", "y"]).map((x) => x.id)).toEqual(["a"]);
+    expect(filterByTags(notes, []).map((x) => x.id)).toEqual(["a", "b"]);
+  });
+
+  it("検索は本文の部分一致・大文字小文字無視", () => {
+    const notes = [n("a", { body: "Cloudflare Workers" }), n("b", { body: "メモ" })];
+    expect(searchNotes(notes, "cloud").map((x) => x.id)).toEqual(["a"]);
+    expect(searchNotes(notes, "  ").map((x) => x.id)).toEqual(["a", "b"]);
+  });
+});
