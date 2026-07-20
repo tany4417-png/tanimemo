@@ -1,0 +1,46 @@
+import { SELF } from "cloudflare:test";
+import { describe, it, expect } from "vitest";
+
+const AUTH = { "Content-Type": "application/json", Authorization: "Bearer test-token" };
+
+function note(over: Record<string, unknown> = {}) {
+  return { id: "01NOTE", body: "hello", tags: ["メモ"], importance: 0, createdAt: 100, updatedAt: 100, deleted: 0, ...over };
+}
+
+async function sync(body: unknown) {
+  return SELF.fetch("https://example.com/api/sync", { method: "POST", headers: AUTH, body: JSON.stringify(body) });
+}
+
+describe("/api/sync", () => {
+  it("pushしたメモがpullで返る", async () => {
+    const res1 = await sync({ since: 0, notes: [note()], attachments: [] });
+    expect(res1.status).toBe(200);
+    const data = await (await sync({ since: 0, notes: [], attachments: [] })).json() as any;
+    expect(data.notes).toHaveLength(1);
+    expect(data.notes[0].body).toBe("hello");
+    expect(data.notes[0].tags).toEqual(["メモ"]);
+    expect(typeof data.now).toBe("number");
+  });
+
+  it("古い更新は勝たない（LWW）", async () => {
+    await sync({ since: 0, notes: [note({ updatedAt: 200, body: "new" })], attachments: [] });
+    await sync({ since: 0, notes: [note({ updatedAt: 150, body: "old" })], attachments: [] });
+    const data = await (await sync({ since: 0, notes: [], attachments: [] })).json() as any;
+    expect(data.notes[0].body).toBe("new");
+    expect(data.notes[0].updatedAt).toBe(200);
+  });
+
+  it("sinceより古い行は返さない", async () => {
+    await sync({ since: 0, notes: [note({ id: "A", updatedAt: 100 }), note({ id: "B", updatedAt: 300 })], attachments: [] });
+    const data = await (await sync({ since: 200, notes: [], attachments: [] })).json() as any;
+    expect(data.notes.map((n: any) => n.id)).toEqual(["B"]);
+  });
+
+  it("添付メタも往復する", async () => {
+    const att = { id: "01ATT", noteId: "01NOTE", mime: "image/png", size: 3, createdAt: 100, updatedAt: 100, deleted: 0 };
+    await sync({ since: 0, notes: [], attachments: [att] });
+    const data = await (await sync({ since: 0, notes: [], attachments: [] })).json() as any;
+    expect(data.attachments).toHaveLength(1);
+    expect(data.attachments[0].noteId).toBe("01NOTE");
+  });
+});
