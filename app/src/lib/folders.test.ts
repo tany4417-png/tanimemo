@@ -264,6 +264,25 @@ describe("deleteFolderWithContents", () => {
     const after = await db.notes.get(alreadyDeleted.id);
     expect(after?.dirty).toBe(0);
   });
+
+  it("先に単独削除済みの子フォルダを持つ親を削除しても、子のupdatedAt/dirtyは変わらない", async () => {
+    const parent = await createFolder("親", null);
+    const child = await createFolder("先に削除済みの子", parent.id);
+    await db.folders.update(child.id, { deleted: 1, dirty: 0 });
+    const before = await db.folders.get(child.id);
+
+    await deleteFolderWithContents(parent.id);
+
+    const after = await db.folders.get(child.id);
+    expect(after?.deleted).toBe(1); // 削除済みのまま
+    expect(after?.dirty).toBe(0); // 触られていない
+    expect(after?.updatedAt).toBe(before?.updatedAt); // タイマーがリセットされない
+
+    // 対象フォルダ自身（id引数）は従来どおり必ずtombstone化される
+    const parentAfter = await db.folders.get(parent.id);
+    expect(parentAfter?.deleted).toBe(1);
+    expect(parentAfter?.dirty).toBe(1);
+  });
 });
 
 describe("restoreFolderWithContents", () => {

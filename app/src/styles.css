@@ -11,15 +11,17 @@
   --shadow-2: 0 4px 12px rgba(42,39,34,.05);
   --shadow-lift: 0 8px 24px rgba(42,39,34,.14);
 
-  /* アクセントパレット（タグ・フォルダの名前ハッシュ彩色、ボタンの役割色に使う。tint=--t-*背景／deep=--c-*文字・ボーダー） */
-  --c-red: #C0504A;    --t-red: #F7E4E2;
-  --c-orange: #C07A3A; --t-orange: #F8EBDD;
-  --c-amber: #B08F2A;  --t-amber: #F6EFD8;
-  --c-green: #5E8C4A;  --t-green: #E7F0E0;
-  --c-teal: #3E8C7E;   --t-teal: #DFF0EC;
+  /* アクセントパレット（タグ・フォルダの名前ハッシュ彩色、ボタンの役割色に使う。tint=--t-*背景／deep=--c-*文字・ボーダー）
+     deepは「deep文字 on tint背景」「白文字 on deep背景」の両方がWCAG 4.5:1以上になる値に調整済み。
+     検証: node scripts/check-contrast.mjs */
+  --c-red: #9E312C;    --t-red: #F7E4E2;
+  --c-orange: #8F4E12; --t-orange: #F8EBDD;
+  --c-amber: #7A5C00;  --t-amber: #F6EFD8;
+  --c-green: #3D6B2E;  --t-green: #E7F0E0;
+  --c-teal: #1F6B5E;   --t-teal: #DFF0EC;
   --c-blue: #2B5F8A;   --t-blue: #E1EBF2;
-  --c-violet: #6E5A9E; --t-violet: #EAE5F4;
-  --c-pink: #B0527E;   --t-pink: #F7E2EC;
+  --c-violet: #5C4790; --t-violet: #EAE5F4;
+  --c-pink: #96376B;   --t-pink: #F7E2EC;
 }
 
 /* accentClassFor()が返すクラス。--acc/--acc-tintを経由して各要素のtint+deepパターンに使う。

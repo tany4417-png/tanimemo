@@ -160,7 +160,9 @@ export async function deleteFolderWithContents(id: string): Promise<void> {
     const cur = await db.folders.get(id);
     if (!cur) throw new Error(`folder not found: ${id}`);
 
-    const targetIds = collectWithDescendants(await db.folders.toArray(), id);
+    const allFolders = await db.folders.toArray();
+    const targetIds = collectWithDescendants(allFolders, id);
+    const foldersById = new Map(allFolders.map((f) => [f.id, f]));
 
     const targetNotes = (await db.notes.toArray()).filter(
       (n) => n.deleted === 0 && n.folderId !== null && targetIds.has(n.folderId)
@@ -169,7 +171,11 @@ export async function deleteFolderWithContents(id: string): Promise<void> {
       await updateNote(n.id, { deleted: 1 });
     }
 
+    // 対象フォルダ自身（id）は常にtombstone化する。子孫フォルダは既に削除済み（他経路で単独削除済み等）
+    // ならスキップし、そのupdatedAt/dirtyを触らない（メモと同様のガード）
     for (const fid of targetIds) {
+      const f = foldersById.get(fid);
+      if (fid !== id && f && f.deleted !== 0) continue;
       await updateFolder(fid, { deleted: 1 });
     }
   });
