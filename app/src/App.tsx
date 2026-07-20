@@ -1,11 +1,15 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { NoteList } from "./components/NoteList";
 import { NoteScreen } from "./components/NoteScreen";
+import { Settings } from "./components/Settings";
+import { SyncStatus } from "./components/SyncStatus";
+import { db } from "./lib/db";
 import { allTags, createNote, listActiveNotes, softDeleteNote, updateNote, type NotePatch } from "./lib/notes";
 import { filterByTags, searchNotes, sortNotes, type SortMode } from "./lib/sort";
+import { runSync } from "./lib/sync";
 
-type View = { name: "list" } | { name: "note"; id: string };
+type View = { name: "list" } | { name: "note"; id: string } | { name: "settings" };
 
 export default function App() {
   const [view, setView] = useState<View>({ name: "list" });
@@ -16,12 +20,56 @@ export default function App() {
   };
   const [activeTags, setActiveTags] = useState<string[]>([]);
   const [query, setQuery] = useState("");
+  const [token, setToken] = useState(() => localStorage.getItem("tanimemo.token") ?? "");
+  const [status, setStatus] = useState<"idle" | "syncing" | "offline" | "error">("idle");
+  const [lastSync, setLastSync] = useState<number | null>(null);
+  const timer = useRef<number | undefined>(undefined);
+
   const notes = useLiveQuery(listActiveNotes, [], []);
+  const pending = useLiveQuery(
+    async () => (await db.notes.where("dirty").equals(1).count()) + (await db.attachments.where("dirty").equals(1).count()),
+    [],
+    0
+  );
   const shown = useMemo(
     () => sortNotes(searchNotes(filterByTags(notes, activeTags), query), sort),
     [notes, activeTags, query, sort]
   );
   const current = view.name === "note" ? notes.find((n) => n.id === view.id) : undefined;
+
+  const syncNow = useCallback(async () => {
+    if (!token) return;
+    setStatus("syncing");
+    try {
+      await runSync(token);
+      setStatus("idle");
+      setLastSync(Date.now());
+    } catch {
+      setStatus(navigator.onLine ? "error" : "offline");
+    }
+  }, [token]);
+
+  const scheduleSync = useCallback(() => {
+    window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(() => void syncNow(), 3000);
+  }, [syncNow]);
+
+  useEffect(() => {
+    void syncNow();
+  }, [syncNow]);
+
+  useEffect(() => {
+    const onOnline = () => void syncNow();
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void syncNow();
+    };
+    window.addEventListener("online", onOnline);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.removeEventListener("online", onOnline);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [syncNow]);
 
   const onCreate = useCallback(async () => {
     const n = await createNote();
@@ -30,6 +78,7 @@ export default function App() {
 
   return (
     <main className="app">
+      <SyncStatus status={status} pending={pending} lastSync={lastSync} onSync={() => void syncNow()} onSettings={() => setView({ name: "settings" })} />
       {view.name === "list" && (
         <NoteList
           notes={shown}
@@ -47,9 +96,24 @@ export default function App() {
       {view.name === "note" && current && (
         <NoteScreen
           note={current}
-          onChange={(patch) => void updateNote(current.id, patch as NotePatch)}
+          onChange={async (patch) => {
+            await updateNote(current.id, patch as NotePatch);
+            scheduleSync();
+          }}
           onDelete={async () => {
             await softDeleteNote(current.id);
+            setView({ name: "list" });
+            scheduleSync();
+          }}
+          onBack={() => setView({ name: "list" })}
+        />
+      )}
+      {view.name === "settings" && (
+        <Settings
+          token={token}
+          onSave={(t) => {
+            localStorage.setItem("tanimemo.token", t);
+            setToken(t);
             setView({ name: "list" });
           }}
           onBack={() => setView({ name: "list" })}

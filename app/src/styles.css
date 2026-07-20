@@ -34,3 +34,11 @@ button.danger { color: #b03030; }
 .note-view { background: #fff; border: 1px solid #e5dfd2; border-radius: 10px; padding: 4px 16px; line-height: 1.8; overflow-wrap: break-word; }
 .note-view a { color: #2b6cb0; }
 .note-view input[type="checkbox"] { width: 1.1em; height: 1.1em; }
+.syncbar { display: flex; gap: 8px; align-items: center; font-size: 0.82rem; color: #6a6456; padding: 6px 0; }
+.syncbar .spacer { flex: 1; }
+.syncbar button { padding: 4px 10px; font-size: 0.82rem; }
+.dot { width: 9px; height: 9px; border-radius: 50%; background: #6cb06c; }
+.dot.syncing { background: #d99a00; }
+.dot.offline { background: #8a8474; }
+.dot.error { background: #b03030; }
+.settings { display: flex; flex-direction: column; gap: 10px; max-width: 420px; }
