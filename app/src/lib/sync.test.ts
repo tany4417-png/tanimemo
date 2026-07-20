@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { addImageFromBlob } from "./attachments";
 import { db, resetDbForTests } from "./db";
 import { createNote, updateNote } from "./notes";
 import { runSync } from "./sync";
@@ -102,5 +103,25 @@ describe("runSync", () => {
     await expect(runSync("tok", f)).rejects.toThrow();
     expect(await db.notes.where("dirty").equals(1).count()).toBe(1);
     expect(await db.meta.get("lastSync")).toBeUndefined();
+  });
+});
+
+describe("runSync 添付アップロード", () => {
+  it("dirtyな添付を先にPUTしてからJSON同期する", async () => {
+    await addImageFromBlob("N1", new Blob([new Uint8Array([1])], { type: "image/png" }));
+    const { f, calls } = okFetch();
+    await runSync("tok", f);
+    expect(calls).toHaveLength(2);
+    expect(calls[0].url).toMatch(/^\/api\/attachments\/.+\?noteId=N1$/);
+    expect(calls[0].init.method).toBe("PUT");
+    expect(calls[1].url).toBe("/api/sync");
+  });
+
+  it("実体が無い添付メタ（他端末由来）はPUTしない", async () => {
+    await db.attachments.put({ id: "X", noteId: "N", mime: "image/png", size: 1, createdAt: 1, updatedAt: 1, deleted: 0, dirty: 1 });
+    const { f, calls } = okFetch();
+    await runSync("tok", f);
+    expect(calls).toHaveLength(1);
+    expect(calls[0].url).toBe("/api/sync");
   });
 });

@@ -1,4 +1,7 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useLiveQuery } from "dexie-react-hooks";
+import { getImageBlob } from "../lib/attachments";
+import { db } from "../lib/db";
 import { renderMarkdown, toggleCheckbox } from "../lib/markdown";
 import type { Note } from "../lib/types";
 
@@ -61,6 +64,52 @@ export function NoteScreen({ note, onChange, onDelete, onBack }: Props) {
       ) : (
         <div className="note-view" onClick={clickView} dangerouslySetInnerHTML={{ __html: html }} />
       )}
+      <Gallery noteId={note.id} />
     </div>
+  );
+}
+
+export function Gallery({ noteId }: { noteId: string }) {
+  const metas = useLiveQuery(
+    () => db.attachments.where("noteId").equals(noteId).filter((a) => a.deleted === 0).toArray(),
+    [noteId],
+    []
+  );
+  const [urls, setUrls] = useState<Record<string, string>>({});
+  const [full, setFull] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    const created: string[] = [];
+    void (async () => {
+      const token = localStorage.getItem("tanimemo.token") ?? "";
+      const next: Record<string, string> = {};
+      for (const m of metas) {
+        const blob = await getImageBlob(m.id, token);
+        if (blob) {
+          const u = URL.createObjectURL(blob);
+          created.push(u);
+          next[m.id] = u;
+        }
+      }
+      if (alive) setUrls(next);
+    })();
+    return () => {
+      alive = false;
+      created.forEach((u) => URL.revokeObjectURL(u));
+    };
+  }, [metas]);
+
+  return (
+    <>
+      <div className="gallery">
+        {metas.map((m) => urls[m.id] && <img key={m.id} className="thumb" src={urls[m.id]} onClick={() => setFull(urls[m.id])} alt="" />)}
+      </div>
+      {full && (
+        <div className="overlay" onClick={() => setFull(null)}>
+          <img src={full} alt="" />
+        </div>
+      )}
+    </>
   );
 }

@@ -18,6 +18,17 @@ export async function runSync(token: string, fetchFn: typeof fetch = fetch): Pro
   const dirtyNotes = await db.notes.where("dirty").equals(1).toArray();
   const dirtyAtts = await db.attachments.where("dirty").equals(1).toArray();
 
+  for (const a of dirtyAtts) {
+    const rec = await db.attachmentBlobs.get(a.id);
+    if (!rec) continue;
+    const up = await fetchFn(`/api/attachments/${a.id}?noteId=${a.noteId}`, {
+      method: "PUT",
+      headers: { "Content-Type": a.mime, Authorization: `Bearer ${token}` },
+      body: rec.blob,
+    });
+    if (!up.ok) throw new Error(`attachment upload failed: ${up.status}`);
+  }
+
   const res = await fetchFn("/api/sync", {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },

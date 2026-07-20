@@ -4,6 +4,7 @@ import { NoteList } from "./components/NoteList";
 import { NoteScreen } from "./components/NoteScreen";
 import { Settings } from "./components/Settings";
 import { SyncStatus } from "./components/SyncStatus";
+import { addImageFromBlob } from "./lib/attachments";
 import { db } from "./lib/db";
 import { allTags, createNote, listActiveNotes, softDeleteNote, updateNote, type NotePatch } from "./lib/notes";
 import { filterByTags, searchNotes, sortNotes, type SortMode } from "./lib/sort";
@@ -76,6 +77,28 @@ export default function App() {
       document.removeEventListener("visibilitychange", onVisible);
     };
   }, [syncNow]);
+
+  useEffect(() => {
+    async function onPaste(e: ClipboardEvent) {
+      if (view.name !== "list") return;
+      const items = [...(e.clipboardData?.items ?? [])];
+      const files = items.filter((i) => i.kind === "file").map((i) => i.getAsFile()).filter((f): f is File => f !== null);
+      const images = files.filter((f) => f.type.startsWith("image/"));
+      if (images.length > 0) {
+        const n = await createNote("(画像)", ["受信"]);
+        for (const f of images) await addImageFromBlob(n.id, f);
+        scheduleSync();
+        return;
+      }
+      const text = e.clipboardData?.getData("text")?.trim() ?? "";
+      if (text) {
+        await createNote(text, ["受信"]);
+        scheduleSync();
+      }
+    }
+    document.addEventListener("paste", onPaste);
+    return () => document.removeEventListener("paste", onPaste);
+  }, [view, scheduleSync]);
 
   const onCreate = useCallback(async () => {
     const n = await createNote();

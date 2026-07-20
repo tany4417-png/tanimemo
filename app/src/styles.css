@@ -42,3 +42,7 @@ button.danger { color: #b03030; }
 .dot.offline { background: #8a8474; }
 .dot.error { background: #b03030; }
 .settings { display: flex; flex-direction: column; gap: 10px; max-width: 420px; }
+.gallery { display: flex; gap: 8px; flex-wrap: wrap; padding: 10px 0; }
+.thumb { width: 96px; height: 96px; object-fit: cover; border-radius: 8px; border: 1px solid #e5dfd2; cursor: pointer; }
+.overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.85); display: flex; align-items: center; justify-content: center; z-index: 10; }
+.overlay img { max-width: 96vw; max-height: 96vh; }
