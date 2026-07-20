@@ -117,3 +117,20 @@ describe("planReorder", () => {
     expect(plan).toEqual({ targetId: "b", targetOrderKey: 2 });
   });
 });
+
+describe("planReorder キー衝突時の正規化", () => {
+  it("前後が同じorderKeyのときは全体を振り直してから挿入する", () => {
+    const items = [
+      { id: "a", orderKey: 1 },
+      { id: "b", orderKey: 1 },
+      { id: "c", orderKey: 5 },
+    ];
+    const plan = planReorder(items, "c", "a", "after");
+    expect(plan).not.toBeNull();
+    expect(plan?.normalized).toBeDefined();
+    const keys = plan!.normalized!.map((i) => i.orderKey);
+    expect(keys).toEqual([0, 1]);
+    expect(plan!.targetOrderKey).toBeGreaterThan(0);
+    expect(plan!.targetOrderKey).toBeLessThan(1);
+  });
+});

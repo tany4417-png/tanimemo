@@ -45,11 +45,26 @@ export function planReorder<T extends OrderKeyed>(
   const nextKey = nextItem?.orderKey ?? null;
 
   if (prevKey === null && nextKey === null && withoutDragged.length > 0) {
-    const normalized = normalizeOrderKeys(withoutDragged);
-    const nPrev = insertIndex > 0 ? normalized[insertIndex - 1].orderKey : null;
-    const nNext = insertIndex < normalized.length ? normalized[insertIndex].orderKey : null;
-    return { normalized, targetId: draggedId, targetOrderKey: computeOrderKey(nPrev, nNext) };
+    return planWithNormalize(withoutDragged, draggedId, insertIndex);
   }
 
-  return { targetId: draggedId, targetOrderKey: computeOrderKey(prevKey, nextKey) };
+  const key = computeOrderKey(prevKey, nextKey);
+  // 重複キーや浮動小数の中点劣化で前後と衝突したら、振り直してから挿入する
+  const degenerate = (prevKey !== null && key <= prevKey) || (nextKey !== null && key >= nextKey);
+  if (degenerate) {
+    return planWithNormalize(withoutDragged, draggedId, insertIndex);
+  }
+
+  return { targetId: draggedId, targetOrderKey: key };
+}
+
+function planWithNormalize<T extends OrderKeyed>(
+  withoutDragged: readonly T[],
+  draggedId: string,
+  insertIndex: number
+): ReorderPlan<T> {
+  const normalized = normalizeOrderKeys(withoutDragged);
+  const nPrev = insertIndex > 0 ? normalized[insertIndex - 1].orderKey : null;
+  const nNext = insertIndex < normalized.length ? normalized[insertIndex].orderKey : null;
+  return { normalized, targetId: draggedId, targetOrderKey: computeOrderKey(nPrev, nNext) };
 }
