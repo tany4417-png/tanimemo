@@ -69,11 +69,10 @@ export async function moveFolder(id: string, newParentId: string | null): Promis
 }
 
 export async function deleteFolderKeepingContents(id: string): Promise<void> {
-  const cur = await db.folders.get(id);
-  if (!cur) throw new Error(`folder not found: ${id}`);
-  const parentId = cur.parentId;
-
   await db.transaction("rw", db.folders, db.notes, async () => {
+    const cur = await db.folders.get(id);
+    if (!cur) throw new Error(`folder not found: ${id}`);
+    const parentId = cur.parentId;
     const childNotes = (await db.notes.toArray()).filter((n) => n.folderId === id);
     for (const n of childNotes) {
       await updateNote(n.id, { folderId: parentId });
