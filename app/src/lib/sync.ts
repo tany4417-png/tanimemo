@@ -27,8 +27,16 @@ export async function runSync(token: string, fetchFn: typeof fetch = fetch): Pro
   const data = (await res.json()) as SyncResponse;
 
   await db.transaction("rw", db.notes, db.attachments, db.meta, async () => {
-    for (const n of dirtyNotes) await db.notes.update(n.id, { dirty: 0 });
-    for (const a of dirtyAtts) await db.attachments.update(a.id, { dirty: 0 });
+    // fetch応答待ちの間に新しい編集が入っている場合、その編集のdirtyを誤ってクリアしないよう、
+    // 現在の行のupdatedAtがpushしたスナップショットと一致する場合だけdirtyを落とす。
+    for (const n of dirtyNotes) {
+      const cur = await db.notes.get(n.id);
+      if (cur && cur.updatedAt === n.updatedAt) await db.notes.update(n.id, { dirty: 0 });
+    }
+    for (const a of dirtyAtts) {
+      const cur = await db.attachments.get(a.id);
+      if (cur && cur.updatedAt === a.updatedAt) await db.attachments.update(a.id, { dirty: 0 });
+    }
     for (const n of data.notes) {
       const cur = await db.notes.get(n.id);
       if (!cur || n.updatedAt > cur.updatedAt) await db.notes.put({ ...n, dirty: 0 });

@@ -1,6 +1,6 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { db, resetDbForTests } from "./db";
-import { createNote } from "./notes";
+import { createNote, updateNote } from "./notes";
 import { runSync } from "./sync";
 import type { SyncResponse } from "./types";
 
@@ -36,9 +36,55 @@ describe("runSync", () => {
     const incomingNew = { id: "REMOTE1", body: "r", tags: [], importance: 0 as const, createdAt: 1, updatedAt: 1, deleted: 0 as const };
     const incomingOld = { id: a.id, body: "stale", tags: [], importance: 0 as const, createdAt: 1, updatedAt: a.updatedAt - 1, deleted: 0 as const };
     const { f } = okFetch({ notes: [incomingNew, incomingOld] });
-    await runSync("tok", f);
+    const result = await runSync("tok", f);
+    expect(result.pulled).toBe(2);
     expect((await db.notes.get("REMOTE1"))?.body).toBe("r");
     expect((await db.notes.get(a.id))?.body).toBe("local");
+  });
+
+  it("同期中に入った編集はdirtyのまま残る（スナップショット競合）", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      vi.setSystemTime(1_000_000);
+      const a = await createNote("original");
+
+      const wrapped = (async () => {
+        // fetchの応答が返ってくる前（サーバー往復の待ち時間中）に編集が入るケースを再現する
+        vi.setSystemTime(1_000_050);
+        await updateNote(a.id, { body: "edited-during-sync" });
+        return new Response(JSON.stringify({ now: 2_000_000, notes: [], attachments: [] }));
+      }) as typeof fetch;
+
+      const result = await runSync("tok", wrapped);
+      expect(result.pulled).toBe(0);
+
+      const cur = await db.notes.get(a.id);
+      expect(cur?.dirty).toBe(1);
+      expect(cur?.body).toBe("edited-during-sync");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("pushした行のエコーバックは状態を壊さない", async () => {
+    const a = await createNote("original");
+    const echoBack = {
+      id: a.id,
+      body: a.body,
+      tags: a.tags,
+      importance: a.importance,
+      createdAt: a.createdAt,
+      updatedAt: a.updatedAt,
+      deleted: a.deleted,
+    };
+    const { f } = okFetch({ notes: [echoBack] });
+
+    const result = await runSync("tok", f);
+    expect(result.pulled).toBe(1);
+
+    const cur = await db.notes.get(a.id);
+    expect(cur?.dirty).toBe(0);
+    expect(cur?.body).toBe("original");
   });
 
   it("成功後にdirtyが0になりlastSyncが更新される", async () => {
