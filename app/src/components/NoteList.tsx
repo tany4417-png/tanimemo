@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { resolveDropTarget } from "../lib/dnd";
 import { listNotesIn } from "../lib/folders";
+import { isTap, shouldCommitSwipe } from "../lib/gesture";
 import { firstLineTitle, urlOnly } from "../lib/markdown";
 import type { SortMode } from "../lib/sort";
 import type { Folder, Note } from "../lib/types";
@@ -40,7 +41,7 @@ export function NoteList(p: Props) {
   return (
     <div className="list">
       <div className="toolbar">
-        {p.folderPath.length > 0 && (
+        {isBrowsingFolder && p.folderPath.length > 0 && (
           <button
             className="icon-btn"
             aria-label="親フォルダへ戻る"
@@ -182,9 +183,9 @@ function FolderCard({
   );
 }
 
-// 長押し（400ms静止）でドラッグモードに入るまでの猶予と、その間に許容する移動量
-const PRESS_HOLD_MS = 400;
-const PRESS_MOVE_CANCEL_PX = 12;
+// 長押し（350ms静止）でドラッグモードに入るまでの猶予と、その間に許容する移動量
+const PRESS_HOLD_MS = 350;
+const PRESS_MOVE_CANCEL_PX = 16;
 
 function SwipeableCard({
   onDelete,
@@ -212,6 +213,11 @@ function SwipeableCard({
   const dxRef = useRef(0);
   const start = useRef<{ x: number; y: number } | null>(null);
   const dragging = useRef(false); // 左スワイプ（削除）判定
+  // pointerdownからの累計最大移動量（誤タップ防止: これが一定以上ならタップ扱いしない）
+  const movedRef = useRef(0);
+  // 直近のpointermove区間の水平速度（px/ms）。フリック確定判定に使う
+  const vxRef = useRef(0);
+  const lastMoveRef = useRef<{ x: number; t: number } | null>(null);
 
   const [isDragMode, setIsDragMode] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
@@ -232,6 +238,9 @@ function SwipeableCard({
     setDx(0);
     start.current = null;
     dragging.current = false;
+    movedRef.current = 0;
+    vxRef.current = 0;
+    lastMoveRef.current = null;
     window.clearTimeout(pressTimer.current);
     pressTimer.current = undefined;
     dragModeRef.current = false;
@@ -334,6 +343,9 @@ function SwipeableCard({
           start.current = { x: e.clientX, y: e.clientY };
           dragging.current = false;
           dxRef.current = 0;
+          movedRef.current = 0;
+          vxRef.current = 0;
+          lastMoveRef.current = { x: e.clientX, t: performance.now() };
           pointerIdRef.current = e.pointerId;
           if (draggable) {
             window.clearTimeout(pressTimer.current);
@@ -347,6 +359,18 @@ function SwipeableCard({
           const dxNow = e.clientX - start.current.x;
           const dyNow = e.clientY - start.current.y;
 
+          // 誤タップ防止: pointerdownからの累計最大移動量を追跡する
+          const distNow = Math.sqrt(dxNow * dxNow + dyNow * dyNow);
+          if (distNow > movedRef.current) movedRef.current = distNow;
+
+          // フリック確定用: 直近のpointermove区間の水平速度（px/ms）を追跡する
+          const nowT = performance.now();
+          if (lastMoveRef.current) {
+            const dt = nowT - lastMoveRef.current.t;
+            if (dt > 0) vxRef.current = (e.clientX - lastMoveRef.current.x) / dt;
+          }
+          lastMoveRef.current = { x: e.clientX, t: nowT };
+
           if (dragModeRef.current) {
             setDragOffset({ x: dxNow, y: dyNow });
             const el = document.elementFromPoint(e.clientX, e.clientY);
@@ -359,14 +383,14 @@ function SwipeableCard({
             return;
           }
 
-          // 400ms以内に12pxを超えて動いたら、長押しドラッグの予約を解除する（以後は既存のスワイプ/スクロール判定に従う）
+          // 350ms以内に16pxを超えて動いたら、長押しドラッグの予約を解除する（以後は既存のスワイプ/スクロール判定に従う）
           if (pressTimer.current !== undefined && (Math.abs(dxNow) > PRESS_MOVE_CANCEL_PX || Math.abs(dyNow) > PRESS_MOVE_CANCEL_PX)) {
             window.clearTimeout(pressTimer.current);
             pressTimer.current = undefined;
           }
 
-          // 誤爆防止: 開始は左24px以上かつ横成分が縦の1.5倍以上のときだけ
-          if (!dragging.current && dxNow < -24 && Math.abs(dxNow) > 1.5 * Math.abs(dyNow)) {
+          // 開始は左20px以上かつ横成分が縦の1.2倍以上のときだけ（少し始まりやすく）
+          if (!dragging.current && dxNow < -20 && Math.abs(dxNow) > 1.2 * Math.abs(dyNow)) {
             dragging.current = true;
             try {
               (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
@@ -383,9 +407,9 @@ function SwipeableCard({
           const isLink = (e.target as HTMLElement).closest("a") !== null;
           if (dragModeRef.current) {
             resolveDragMove();
-          } else if (dragging.current && dxRef.current < -120) {
+          } else if (dragging.current && shouldCommitSwipe(dxRef.current, vxRef.current)) {
             onDelete();
-          } else if (!dragging.current && start.current && !isLink) {
+          } else if (isTap(movedRef.current, dragging.current, dragModeRef.current) && start.current && !isLink) {
             onOpen();
           }
           reset();
