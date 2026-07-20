@@ -1,5 +1,5 @@
 import { db } from "./db";
-import type { AttachmentMeta, Note, SyncResponse } from "./types";
+import type { AttachmentMeta, Folder, Note, SyncResponse } from "./types";
 
 export type SyncResult = { pushed: number; pulled: number };
 
@@ -13,10 +13,16 @@ function stripAtt(a: AttachmentMeta) {
   return rest;
 }
 
+function stripFolder(f: Folder) {
+  const { dirty: _dirty, ...rest } = f;
+  return rest;
+}
+
 export async function runSync(token: string, fetchFn: typeof fetch = fetch): Promise<SyncResult> {
   const since = Number((await db.meta.get("lastSync"))?.value ?? 0);
   const dirtyNotes = await db.notes.where("dirty").equals(1).toArray();
   const dirtyAtts = await db.attachments.where("dirty").equals(1).toArray();
+  const dirtyFolders = await db.folders.where("dirty").equals(1).toArray();
 
   for (const a of dirtyAtts) {
     const rec = await db.attachmentBlobs.get(a.id);
@@ -32,12 +38,18 @@ export async function runSync(token: string, fetchFn: typeof fetch = fetch): Pro
   const res = await fetchFn("/api/sync", {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ since, notes: dirtyNotes.map(stripNote), attachments: dirtyAtts.map(stripAtt) }),
+    body: JSON.stringify({
+      since,
+      notes: dirtyNotes.map(stripNote),
+      attachments: dirtyAtts.map(stripAtt),
+      folders: dirtyFolders.map(stripFolder),
+    }),
   });
   if (!res.ok) throw new Error(`sync failed: ${res.status}`);
   const data = (await res.json()) as SyncResponse;
+  const folders = data.folders ?? [];
 
-  await db.transaction("rw", db.notes, db.attachments, db.attachmentBlobs, db.meta, async () => {
+  await db.transaction("rw", db.notes, db.attachments, db.attachmentBlobs, db.folders, db.meta, async () => {
     // fetch応答待ちの間に新しい編集が入っている場合、その編集のdirtyを誤ってクリアしないよう、
     // 現在の行のupdatedAtがpushしたスナップショットと一致する場合だけdirtyを落とす。
     for (const n of dirtyNotes) {
@@ -48,6 +60,10 @@ export async function runSync(token: string, fetchFn: typeof fetch = fetch): Pro
       const cur = await db.attachments.get(a.id);
       if (cur && cur.updatedAt === a.updatedAt) await db.attachments.update(a.id, { dirty: 0 });
     }
+    for (const fl of dirtyFolders) {
+      const cur = await db.folders.get(fl.id);
+      if (cur && cur.updatedAt === fl.updatedAt) await db.folders.update(fl.id, { dirty: 0 });
+    }
     for (const n of data.notes) {
       const cur = await db.notes.get(n.id);
       if (!cur || n.updatedAt > cur.updatedAt) await db.notes.put({ ...n, dirty: 0 });
@@ -55,6 +71,10 @@ export async function runSync(token: string, fetchFn: typeof fetch = fetch): Pro
     for (const a of data.attachments) {
       const cur = await db.attachments.get(a.id);
       if (!cur || a.updatedAt > cur.updatedAt) await db.attachments.put({ ...a, dirty: 0 });
+    }
+    for (const fl of folders) {
+      const cur = await db.folders.get(fl.id);
+      if (!cur || fl.updatedAt > cur.updatedAt) await db.folders.put({ ...fl, dirty: 0 });
     }
     await db.meta.put({ key: "lastSync", value: data.now });
 
@@ -69,8 +89,12 @@ export async function runSync(token: string, fetchFn: typeof fetch = fetch): Pro
       await db.attachments.where("noteId").equals(id).delete();
       await db.attachmentBlobs.delete(id);
       await db.attachments.delete(id);
+      await db.folders.delete(id);
     }
   });
 
-  return { pushed: dirtyNotes.length + dirtyAtts.length, pulled: data.notes.length + data.attachments.length };
+  return {
+    pushed: dirtyNotes.length + dirtyAtts.length + dirtyFolders.length,
+    pulled: data.notes.length + data.attachments.length + folders.length,
+  };
 }

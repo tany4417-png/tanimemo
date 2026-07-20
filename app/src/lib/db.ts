@@ -1,5 +1,5 @@
 import Dexie, { type Table } from "dexie";
-import type { AttachmentMeta, Note } from "./types";
+import type { AttachmentMeta, Folder, Note } from "./types";
 
 export type AttachmentBlobRow = { id: string; blob: Blob };
 export type MetaRow = { key: string; value: number | string };
@@ -9,6 +9,7 @@ export class TanimemoDB extends Dexie {
   attachments!: Table<AttachmentMeta, string>;
   attachmentBlobs!: Table<AttachmentBlobRow, string>;
   meta!: Table<MetaRow, string>;
+  folders!: Table<Folder, string>;
 
   constructor() {
     super("tanimemo");
@@ -18,6 +19,17 @@ export class TanimemoDB extends Dexie {
       attachmentBlobs: "id",
       meta: "key",
     });
+    this.version(2)
+      .stores({
+        notes: "id, updatedAt, createdAt, importance, dirty, folderId",
+        attachments: "id, noteId, updatedAt, dirty",
+        attachmentBlobs: "id",
+        meta: "key",
+        folders: "id, parentId, updatedAt, dirty",
+      })
+      .upgrade(async (tx) => {
+        await tx.table("notes").toCollection().modify({ folderId: null });
+      });
   }
 }
 

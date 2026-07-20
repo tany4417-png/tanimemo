@@ -3,7 +3,7 @@ import type { Note } from "./types";
 import { filterByTags, searchNotes, sortNotes } from "./sort";
 
 function n(id: string, over: Partial<Note> = {}): Note {
-  return { id, body: id, tags: [], importance: 0, createdAt: 0, updatedAt: 0, deleted: 0, dirty: 0, ...over };
+  return { id, body: id, tags: [], importance: 0, createdAt: 0, updatedAt: 0, deleted: 0, dirty: 0, folderId: null, ...over };
 }
 
 describe("sortNotes", () => {

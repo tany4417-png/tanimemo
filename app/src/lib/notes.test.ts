@@ -25,6 +25,23 @@ describe("メモCRUD", () => {
     expect(list[0].body).toBe("最初のメモ");
   });
 
+  it("folderId省略時はnull（既存呼び出しと互換）", async () => {
+    const n = await createNote("body", ["t"]);
+    expect(n.folderId).toBeNull();
+  });
+
+  it("folderIdを指定して作成できる", async () => {
+    const n = await createNote("body", [], "FOLDER1");
+    expect(n.folderId).toBe("FOLDER1");
+  });
+
+  it("updateNoteでfolderIdを変更できる", async () => {
+    const n = await createNote("body");
+    const next = await updateNote(n.id, { folderId: "FOLDER2" });
+    expect(next.folderId).toBe("FOLDER2");
+    expect(next.dirty).toBe(1);
+  });
+
   it("更新でupdatedAtが進みdirty=1に戻る", async () => {
     const n = await createNote("a");
     const before = n.updatedAt;

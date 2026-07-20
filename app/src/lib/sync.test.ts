@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { addImageFromBlob } from "./attachments";
 import { db, resetDbForTests } from "./db";
+import { createFolder } from "./folders";
 import { createNote, updateNote } from "./notes";
 import { runSync } from "./sync";
 import type { SyncResponse } from "./types";
@@ -34,8 +35,8 @@ describe("runSync", () => {
 
   it("受信は新しい方だけ適用する（LWW）", async () => {
     const a = await createNote("local");
-    const incomingNew = { id: "REMOTE1", body: "r", tags: [], importance: 0 as const, createdAt: 1, updatedAt: 1, deleted: 0 as const };
-    const incomingOld = { id: a.id, body: "stale", tags: [], importance: 0 as const, createdAt: 1, updatedAt: a.updatedAt - 1, deleted: 0 as const };
+    const incomingNew = { id: "REMOTE1", body: "r", tags: [], importance: 0 as const, createdAt: 1, updatedAt: 1, deleted: 0 as const, folderId: null };
+    const incomingOld = { id: a.id, body: "stale", tags: [], importance: 0 as const, createdAt: 1, updatedAt: a.updatedAt - 1, deleted: 0 as const, folderId: null };
     const { f } = okFetch({ notes: [incomingNew, incomingOld] });
     const result = await runSync("tok", f);
     expect(result.pulled).toBe(2);
@@ -77,6 +78,7 @@ describe("runSync", () => {
       createdAt: a.createdAt,
       updatedAt: a.updatedAt,
       deleted: a.deleted,
+      folderId: a.folderId,
     };
     const { f } = okFetch({ notes: [echoBack] });
 
@@ -110,6 +112,57 @@ describe("runSync", () => {
     const { f } = okFetch({ purgedIds: [a.id] });
     await runSync("tok", f);
     expect(await db.notes.get(a.id)).toBeUndefined();
+  });
+});
+
+describe("runSync フォルダ", () => {
+  it("dirtyなフォルダだけを送り、dirtyフィールドは含めない", async () => {
+    const a = await createFolder("a", null);
+    await createFolder("b", null);
+    await db.folders.update(a.id, { dirty: 0 as const });
+    const { f, calls } = okFetch();
+    await runSync("tok", f);
+    const body = JSON.parse(String(calls[0].init.body));
+    expect(body.folders).toHaveLength(1);
+    expect(body.folders[0].name).toBe("b");
+    expect(body.folders[0].dirty).toBeUndefined();
+  });
+
+  it("受信フォルダはLWWで適用されdirty=0になる", async () => {
+    const local = await createFolder("local", null);
+    const incomingNew = { id: "RFOLDER1", name: "r", parentId: null, createdAt: 1, updatedAt: 1, deleted: 0 as const };
+    const incomingOld = { id: local.id, name: "stale", parentId: null, createdAt: 1, updatedAt: local.updatedAt - 1, deleted: 0 as const };
+    const { f } = okFetch({ folders: [incomingNew, incomingOld] });
+    const result = await runSync("tok", f);
+    expect(result.pulled).toBe(2);
+    const remote = await db.folders.get("RFOLDER1");
+    expect(remote?.name).toBe("r");
+    expect(remote?.dirty).toBe(0);
+    const localAfter = await db.folders.get(local.id);
+    expect(localAfter?.name).toBe("local");
+  });
+
+  it("pushしたフォルダのdirtyがクリアされ、lastSyncも更新される", async () => {
+    await createFolder("f", null);
+    const { f } = okFetch();
+    const result = await runSync("tok", f);
+    expect(result.pushed).toBe(1);
+    expect(await db.folders.where("dirty").equals(1).count()).toBe(0);
+  });
+
+  it("応答にfoldersが無くても動く（?? []）", async () => {
+    await createFolder("f", null);
+    const f = (async () => new Response(JSON.stringify({ now: 1000, notes: [], attachments: [] }))) as typeof fetch;
+    const result = await runSync("tok", f);
+    expect(result.pulled).toBe(0);
+    expect(await db.folders.where("dirty").equals(1).count()).toBe(0);
+  });
+
+  it("purgedIdsにフォルダidが来たらローカルから物理削除する", async () => {
+    const folder = await createFolder("消えるフォルダ", null);
+    const { f } = okFetch({ purgedIds: [folder.id] });
+    await runSync("tok", f);
+    expect(await db.folders.get(folder.id)).toBeUndefined();
   });
 });
 
