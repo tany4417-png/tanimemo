@@ -215,4 +215,51 @@ describe("/api/sync", () => {
     expect(r.purgedIds).toContain("ZOMBIEFOLDER");
     expect(r.folders.find((f: any) => f.id === "ZOMBIEFOLDER" && f.deleted === 0)).toBeUndefined();
   });
+
+  it("メモのorderKeyが往復する", async () => {
+    await sync({ since: 0, notes: [note({ id: "NOTEORDER", orderKey: 1.5 })], attachments: [] });
+    const data = await (await sync({ since: 0, notes: [], attachments: [] })).json() as any;
+    expect(data.notes.find((n: any) => n.id === "NOTEORDER")?.orderKey).toBe(1.5);
+  });
+
+  it("フォルダのorderKeyが往復する", async () => {
+    await sync({ since: 0, notes: [], attachments: [], folders: [folder({ id: "FOLDERORDER", orderKey: 2 })] });
+    const data = await (await sync({ since: 0, notes: [], attachments: [], folders: [] })).json() as any;
+    expect(data.folders.find((f: any) => f.id === "FOLDERORDER")?.orderKey).toBe(2);
+  });
+
+  it("orderKeyフィールドの無いpush（旧クライアント）はメモのorder_keyを現状維持する", async () => {
+    await sync({ since: 0, notes: [note({ id: "OLDCLIENTORDER", orderKey: 3 })], attachments: [] });
+    // 旧クライアントを模してorderKeyフィールド自体を持たないオブジェクトをpushする
+    const legacyBody = {
+      since: 0,
+      notes: [{
+        id: "OLDCLIENTORDER", body: "edited-by-old-client", tags: ["メモ"], importance: 0,
+        createdAt: 100, updatedAt: 200, deleted: 0, folderId: null,
+      }],
+      attachments: [],
+    };
+    const res = await sync(legacyBody);
+    expect(res.status).toBe(200);
+    const data = await (await sync({ since: 0, notes: [], attachments: [] })).json() as any;
+    const after = data.notes.find((n: any) => n.id === "OLDCLIENTORDER");
+    expect(after?.body).toBe("edited-by-old-client");
+    expect(after?.orderKey).toBe(3);
+  });
+
+  it("orderKeyフィールドの無いpush（旧クライアント）はフォルダのorder_keyを現状維持する", async () => {
+    await sync({ since: 0, notes: [], attachments: [], folders: [folder({ id: "OLDCLIENTFOLDERORDER", orderKey: 5 })] });
+    const legacyBody = {
+      since: 0,
+      notes: [],
+      attachments: [],
+      folders: [{ id: "OLDCLIENTFOLDERORDER", name: "edited-by-old-client", parentId: null, createdAt: 100, updatedAt: 200, deleted: 0 }],
+    };
+    const res = await sync(legacyBody);
+    expect(res.status).toBe(200);
+    const data = await (await sync({ since: 0, notes: [], attachments: [], folders: [] })).json() as any;
+    const after = data.folders.find((f: any) => f.id === "OLDCLIENTFOLDERORDER");
+    expect(after?.name).toBe("edited-by-old-client");
+    expect(after?.orderKey).toBe(5);
+  });
 });

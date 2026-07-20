@@ -8,6 +8,8 @@ export type Note = {
   deleted: 0 | 1;
   dirty: 0 | 1;
   folderId: string | null;
+  // 手動並べ替え用の順序キー。null=未設定（旧データ・新規作成直後）。任意欄はfolderId導入前の既存Dexieレコードとの互換のため
+  orderKey?: number | null;
 };
 
 export type AttachmentMeta = {
@@ -29,6 +31,7 @@ export type Folder = {
   updatedAt: number;
   deleted: 0 | 1;
   dirty: 0 | 1;
+  orderKey?: number | null;
 };
 
 export type SyncResponse = {

@@ -3,7 +3,7 @@ import { db } from "./db";
 import { updateNote } from "./notes";
 import type { Folder, Note } from "./types";
 
-type FolderPatch = Partial<Pick<Folder, "name" | "parentId" | "deleted">>;
+type FolderPatch = Partial<Pick<Folder, "name" | "parentId" | "deleted" | "orderKey">>;
 
 async function updateFolder(id: string, patch: FolderPatch): Promise<Folder> {
   const cur = await db.folders.get(id);
@@ -15,7 +15,7 @@ async function updateFolder(id: string, patch: FolderPatch): Promise<Folder> {
 
 export async function createFolder(name: string, parentId: string | null): Promise<Folder> {
   const now = Date.now();
-  const f: Folder = { id: ulid(), name, parentId, createdAt: now, updatedAt: now, deleted: 0, dirty: 1 };
+  const f: Folder = { id: ulid(), name, parentId, createdAt: now, updatedAt: now, deleted: 0, dirty: 1, orderKey: null };
   await db.folders.put(f);
   return f;
 }
@@ -24,11 +24,30 @@ export async function renameFolder(id: string, name: string): Promise<Folder> {
   return updateFolder(id, { name });
 }
 
+// メモ・フォルダの手動並べ替え（D&D）。orderKeyの計算自体はlib/reorder.tsのplanReorder等の純関数が担う
+export async function reorderNote(id: string, orderKey: number): Promise<Note> {
+  return updateNote(id, { orderKey });
+}
+
+export async function reorderFolder(id: string, orderKey: number): Promise<Folder> {
+  return updateFolder(id, { orderKey });
+}
+
+// orderKey昇順（nullは末尾、null同士はname昇順）で並べる。手動並べ替えの対象なのでソートモードに関係なく常にこの順
+function compareByOrderKey(a: Folder, b: Folder): number {
+  const ao = a.orderKey ?? null;
+  const bo = b.orderKey ?? null;
+  if (ao === null && bo === null) return a.name > b.name ? 1 : a.name < b.name ? -1 : 0;
+  if (ao === null) return 1;
+  if (bo === null) return -1;
+  return ao - bo;
+}
+
 export async function listChildFolders(parentId: string | null): Promise<Folder[]> {
   const all = await db.folders.toArray();
   return all
     .filter((f) => f.deleted === 0 && f.parentId === parentId)
-    .sort((a, b) => (a.name > b.name ? 1 : a.name < b.name ? -1 : 0));
+    .sort(compareByOrderKey);
 }
 
 export async function listNotesIn(folderId: string | null): Promise<Note[]> {

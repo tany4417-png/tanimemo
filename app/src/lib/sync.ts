@@ -66,7 +66,7 @@ export async function runSync(token: string, fetchFn: typeof fetch = fetch): Pro
     }
     for (const n of data.notes) {
       const cur = await db.notes.get(n.id);
-      if (!cur || n.updatedAt > cur.updatedAt) await db.notes.put({ ...n, folderId: n.folderId ?? null, dirty: 0 });
+      if (!cur || n.updatedAt > cur.updatedAt) await db.notes.put({ ...n, folderId: n.folderId ?? null, orderKey: n.orderKey ?? null, dirty: 0 });
     }
     for (const a of data.attachments) {
       const cur = await db.attachments.get(a.id);
@@ -74,7 +74,7 @@ export async function runSync(token: string, fetchFn: typeof fetch = fetch): Pro
     }
     for (const fl of folders) {
       const cur = await db.folders.get(fl.id);
-      if (!cur || fl.updatedAt > cur.updatedAt) await db.folders.put({ ...fl, dirty: 0 });
+      if (!cur || fl.updatedAt > cur.updatedAt) await db.folders.put({ ...fl, orderKey: fl.orderKey ?? null, dirty: 0 });
     }
     await db.meta.put({ key: "lastSync", value: data.now });
 

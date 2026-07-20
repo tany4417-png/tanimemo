@@ -8,6 +8,8 @@ export type NoteRecord = {
   deleted: 0 | 1;
   // 旧クライアントはこのフィールド自体を送らないことがある（upsertNoteはその場合folder_idを現状維持する）
   folderId?: string | null;
+  // 旧クライアントはこのフィールド自体を送らないことがある（upsertNoteはその場合order_keyを現状維持する）
+  orderKey?: number | null;
 };
 
 export type AttachmentRecord = {
@@ -27,6 +29,8 @@ export type FolderRecord = {
   createdAt: number;
   updatedAt: number;
   deleted: 0 | 1;
+  // 旧クライアントはこのフィールド自体を送らないことがある（upsertFolderはその場合order_keyを現状維持する）
+  orderKey?: number | null;
 };
 
 export type SyncRequest = { since: number; notes: NoteRecord[]; attachments: AttachmentRecord[]; folders?: FolderRecord[] };

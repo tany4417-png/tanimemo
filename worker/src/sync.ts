@@ -8,11 +8,23 @@ async function isPurged(db: D1Database, id: string): Promise<boolean> {
 
 export async function upsertNote(db: D1Database, n: NoteRecord): Promise<boolean> {
   if (await isPurged(db, n.id)) return false;
-  // 旧クライアント対策: pushされたオブジェクトにfolderIdフィールド自体が無い場合は、
-  // 「ルートへ明示的に移動した(null)」と区別してfolder_idを現状維持する（INSERT時のみNULL、
-  // 既存行へのUPDATEではfolder_idをSET句に含めない）
+  // 旧クライアント対策: pushされたオブジェクトにfolderId/orderKeyフィールド自体が無い場合は、
+  // 「明示的にnullへ変更した」と区別してfolder_id/order_keyを現状維持する（INSERT時のみNULL、
+  // 既存行へのUPDATEではSET句に含めない）。2フィールド独立のため4通りを明示的に書く
   const hasFolderId = "folderId" in n;
-  if (hasFolderId) {
+  const hasOrderKey = "orderKey" in n;
+  const base = [n.id, n.body, JSON.stringify(n.tags), n.importance, n.createdAt, n.updatedAt, n.deleted, Date.now()] as const;
+  if (hasFolderId && hasOrderKey) {
+    await db.prepare(
+      `INSERT INTO notes (id, body, tags, importance, created_at, updated_at, deleted, received_at, folder_id, order_key)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+       ON CONFLICT(id) DO UPDATE SET
+         body = excluded.body, tags = excluded.tags, importance = excluded.importance,
+         updated_at = excluded.updated_at, deleted = excluded.deleted, received_at = excluded.received_at,
+         folder_id = excluded.folder_id, order_key = excluded.order_key
+       WHERE excluded.updated_at > notes.updated_at`
+    ).bind(...base, n.folderId ?? null, n.orderKey ?? null).run();
+  } else if (hasFolderId) {
     await db.prepare(
       `INSERT INTO notes (id, body, tags, importance, created_at, updated_at, deleted, received_at, folder_id)
        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
@@ -21,16 +33,26 @@ export async function upsertNote(db: D1Database, n: NoteRecord): Promise<boolean
          updated_at = excluded.updated_at, deleted = excluded.deleted, received_at = excluded.received_at,
          folder_id = excluded.folder_id
        WHERE excluded.updated_at > notes.updated_at`
-    ).bind(n.id, n.body, JSON.stringify(n.tags), n.importance, n.createdAt, n.updatedAt, n.deleted, Date.now(), n.folderId ?? null).run();
+    ).bind(...base, n.folderId ?? null).run();
+  } else if (hasOrderKey) {
+    await db.prepare(
+      `INSERT INTO notes (id, body, tags, importance, created_at, updated_at, deleted, received_at, order_key)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+       ON CONFLICT(id) DO UPDATE SET
+         body = excluded.body, tags = excluded.tags, importance = excluded.importance,
+         updated_at = excluded.updated_at, deleted = excluded.deleted, received_at = excluded.received_at,
+         order_key = excluded.order_key
+       WHERE excluded.updated_at > notes.updated_at`
+    ).bind(...base, n.orderKey ?? null).run();
   } else {
     await db.prepare(
-      `INSERT INTO notes (id, body, tags, importance, created_at, updated_at, deleted, received_at, folder_id)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, NULL)
+      `INSERT INTO notes (id, body, tags, importance, created_at, updated_at, deleted, received_at)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
        ON CONFLICT(id) DO UPDATE SET
          body = excluded.body, tags = excluded.tags, importance = excluded.importance,
          updated_at = excluded.updated_at, deleted = excluded.deleted, received_at = excluded.received_at
        WHERE excluded.updated_at > notes.updated_at`
-    ).bind(n.id, n.body, JSON.stringify(n.tags), n.importance, n.createdAt, n.updatedAt, n.deleted, Date.now()).run();
+    ).bind(...base).run();
   }
   return true;
 }
@@ -50,20 +72,40 @@ export async function upsertAttachment(db: D1Database, a: AttachmentRecord): Pro
 
 export async function upsertFolder(db: D1Database, f: FolderRecord): Promise<boolean> {
   if (await isPurged(db, f.id)) return false;
-  await db.prepare(
-    `INSERT INTO folders (id, name, parent_id, created_at, updated_at, deleted, received_at)
-     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
-     ON CONFLICT(id) DO UPDATE SET
-       name = excluded.name, parent_id = excluded.parent_id,
-       updated_at = excluded.updated_at, deleted = excluded.deleted, received_at = excluded.received_at
-     WHERE excluded.updated_at > folders.updated_at`
-  ).bind(f.id, f.name, f.parentId ?? null, f.createdAt, f.updatedAt, f.deleted, Date.now()).run();
+  // 旧クライアント対策: orderKeyフィールド自体が無い場合はorder_keyを現状維持する（notesのfolder_idと同じパターン）
+  const hasOrderKey = "orderKey" in f;
+  if (hasOrderKey) {
+    await db.prepare(
+      `INSERT INTO folders (id, name, parent_id, created_at, updated_at, deleted, received_at, order_key)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+       ON CONFLICT(id) DO UPDATE SET
+         name = excluded.name, parent_id = excluded.parent_id,
+         updated_at = excluded.updated_at, deleted = excluded.deleted, received_at = excluded.received_at,
+         order_key = excluded.order_key
+       WHERE excluded.updated_at > folders.updated_at`
+    ).bind(f.id, f.name, f.parentId ?? null, f.createdAt, f.updatedAt, f.deleted, Date.now(), f.orderKey ?? null).run();
+  } else {
+    await db.prepare(
+      `INSERT INTO folders (id, name, parent_id, created_at, updated_at, deleted, received_at)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+       ON CONFLICT(id) DO UPDATE SET
+         name = excluded.name, parent_id = excluded.parent_id,
+         updated_at = excluded.updated_at, deleted = excluded.deleted, received_at = excluded.received_at
+       WHERE excluded.updated_at > folders.updated_at`
+    ).bind(f.id, f.name, f.parentId ?? null, f.createdAt, f.updatedAt, f.deleted, Date.now()).run();
+  }
   return true;
 }
 
-type NoteRow = { id: string; body: string; tags: string; importance: number; created_at: number; updated_at: number; deleted: 0 | 1; folder_id: string | null };
+type NoteRow = {
+  id: string; body: string; tags: string; importance: number; created_at: number; updated_at: number;
+  deleted: 0 | 1; folder_id: string | null; order_key: number | null;
+};
 type AttRow = { id: string; note_id: string; mime: string; size: number; created_at: number; updated_at: number; deleted: 0 | 1 };
-type FolderRow = { id: string; name: string; parent_id: string | null; created_at: number; updated_at: number; deleted: 0 | 1 };
+type FolderRow = {
+  id: string; name: string; parent_id: string | null; created_at: number; updated_at: number;
+  deleted: 0 | 1; order_key: number | null;
+};
 
 export const TRASH_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 // 既知の限界: ゴミ箱保持30日＋このログ保持180日＝約210日以上同期しない端末には、
@@ -124,17 +166,17 @@ export async function handleSync(req: Request, env: Env): Promise<Response> {
     `SELECT id, purged_at, kind FROM purged WHERE kind IN ('note', 'folder') AND purged_at > ?1`
   ).bind(body.since).all<{ id: string; purged_at: number; kind: string }>();
   const noteStubs: NoteRecord[] = purgedRows.results.filter((r) => r.kind === "note").map((r) => ({
-    id: r.id, body: "", tags: [], importance: 0, createdAt: 0, updatedAt: r.purged_at, deleted: 1, folderId: null,
+    id: r.id, body: "", tags: [], importance: 0, createdAt: 0, updatedAt: r.purged_at, deleted: 1, folderId: null, orderKey: null,
   }));
   const folderStubs: FolderRecord[] = purgedRows.results.filter((r) => r.kind === "folder").map((r) => ({
-    id: r.id, name: "", parentId: null, createdAt: 0, updatedAt: r.purged_at, deleted: 1,
+    id: r.id, name: "", parentId: null, createdAt: 0, updatedAt: r.purged_at, deleted: 1, orderKey: null,
   }));
   const res: SyncResponse = {
     now,
     notes: [
       ...noteRows.results.map((r) => ({
         id: r.id, body: r.body, tags: JSON.parse(r.tags) as string[], importance: r.importance,
-        createdAt: r.created_at, updatedAt: r.updated_at, deleted: r.deleted, folderId: r.folder_id,
+        createdAt: r.created_at, updatedAt: r.updated_at, deleted: r.deleted, folderId: r.folder_id, orderKey: r.order_key,
       })),
       ...noteStubs,
     ],
@@ -145,7 +187,7 @@ export async function handleSync(req: Request, env: Env): Promise<Response> {
     folders: [
       ...folderRows.results.map((r) => ({
         id: r.id, name: r.name, parentId: r.parent_id,
-        createdAt: r.created_at, updatedAt: r.updated_at, deleted: r.deleted,
+        createdAt: r.created_at, updatedAt: r.updated_at, deleted: r.deleted, orderKey: r.order_key,
       })),
       ...folderStubs,
     ],

@@ -35,6 +35,38 @@ describe("sortNotes", () => {
     sortNotes(src, "created");
     expect(src.map((x) => x.id)).toEqual(["a", "b"]);
   });
+
+  it("manualはorderKey昇順", () => {
+    const r = sortNotes(
+      [n("a", { orderKey: 2 }), n("b", { orderKey: 0 }), n("c", { orderKey: 1 })],
+      "manual"
+    );
+    expect(r.map((x) => x.id)).toEqual(["b", "c", "a"]);
+  });
+
+  it("manualはorderKey未設定(null)を末尾に回す", () => {
+    const r = sortNotes(
+      [n("nokey", { orderKey: null }), n("hasKey", { orderKey: 0 })],
+      "manual"
+    );
+    expect(r.map((x) => x.id)).toEqual(["hasKey", "nokey"]);
+  });
+
+  it("manualでorderKeyが両方null同士はcreatedAt降順", () => {
+    const r = sortNotes(
+      [n("old", { orderKey: null, createdAt: 1 }), n("new", { orderKey: null, createdAt: 5 })],
+      "manual"
+    );
+    expect(r.map((x) => x.id)).toEqual(["new", "old"]);
+  });
+
+  it("manualは星3の上部固定を適用しない（純粋な手動順）", () => {
+    const r = sortNotes(
+      [n("normal", { orderKey: 0, importance: 0 }), n("pin", { orderKey: 1, importance: 3 })],
+      "manual"
+    );
+    expect(r.map((x) => x.id)).toEqual(["normal", "pin"]);
+  });
 });
 
 describe("filterByTags / searchNotes", () => {

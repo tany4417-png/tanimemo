@@ -140,6 +140,12 @@ button.icon-btn { width: 36px; height: 36px; padding: 0; }
 .swipe-wrap:has(.dragging) .swipe-bg { opacity: 0; }
 [data-drop-folder].drop-active { outline: 2px solid var(--indigo); outline-offset: -2px; border-radius: 8px; background: #F2F4F0; }
 
+/* 手動並べ替えの挿入インジケータ: 対象カードの上/下辺に2pxの線を出す。
+   ::before/::afterは.folder-cardの「タブ」装飾(::before)と競合するため、box-shadowで表現し
+   既存の影(--shadow-1, --shadow-2)を消さないよう並べて指定する */
+.insert-before { box-shadow: inset 0 2px 0 0 var(--indigo), var(--shadow-1), var(--shadow-2); }
+.insert-after { box-shadow: inset 0 -2px 0 0 var(--indigo), var(--shadow-1), var(--shadow-2); }
+
 /* 画面切替（list/note/settings/trash）: フェード＋上方向スライド */
 .view-transition { animation: view-enter 120ms ease-out; }
 @keyframes view-enter {

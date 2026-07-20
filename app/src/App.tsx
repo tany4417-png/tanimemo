@@ -8,8 +8,9 @@ import { TrashScreen } from "./components/TrashScreen";
 import { addImageFromBlob } from "./lib/attachments";
 import { db } from "./lib/db";
 import { exportZip, localYmd } from "./lib/export";
-import { createFolder, deleteFolderKeepingContents, folderPath, listChildFolders, moveFolder, moveNote, renameFolder, repairOrphans } from "./lib/folders";
+import { createFolder, deleteFolderKeepingContents, folderPath, listChildFolders, moveFolder, moveNote, renameFolder, reorderFolder, reorderNote, repairOrphans } from "./lib/folders";
 import { allTags, createNote, listActiveNotes, purgeExpiredTrashLocal, softDeleteNote, updateNote, type NotePatch } from "./lib/notes";
+import type { ReorderPlan } from "./lib/reorder";
 import { filterByTags, searchNotes, sortNotes, type SortMode } from "./lib/sort";
 import { runSync } from "./lib/sync";
 
@@ -169,6 +170,31 @@ export default function App() {
     [scheduleSync]
   );
 
+  const onReorderNote = useCallback(
+    async (plan: ReorderPlan<{ id: string; orderKey: number | null }>) => {
+      if (plan.normalized) {
+        for (const item of plan.normalized) await reorderNote(item.id, item.orderKey as number);
+      }
+      await reorderNote(plan.targetId, plan.targetOrderKey);
+      // 手動で並べ替えたら、現在のソートがmanualでなければ自動で切り替える（手動順が見える状態にする）
+      if (sort !== "manual") setSort("manual");
+      scheduleSync();
+    },
+    [sort, scheduleSync]
+  );
+
+  // フォルダの並べ替えはソートモードに関係なく常に有効
+  const onReorderFolder = useCallback(
+    async (plan: ReorderPlan<{ id: string; orderKey: number | null }>) => {
+      if (plan.normalized) {
+        for (const item of plan.normalized) await reorderFolder(item.id, item.orderKey as number);
+      }
+      await reorderFolder(plan.targetId, plan.targetOrderKey);
+      scheduleSync();
+    },
+    [scheduleSync]
+  );
+
   return (
     <main className="app">
       <SyncStatus status={status} pending={pending} lastSync={lastSync} onSync={() => void syncNow()} onSettings={() => setView({ name: "settings" })} />
@@ -199,6 +225,8 @@ export default function App() {
             onDeleteFolder={onDeleteFolder}
             onMoveNote={onMoveNote}
             onMoveFolder={onMoveFolder}
+            onReorderNote={onReorderNote}
+            onReorderFolder={onReorderFolder}
           />
         )}
         {view.name === "note" && current && (

@@ -2,11 +2,11 @@ import { ulid } from "ulid";
 import { db } from "./db";
 import type { Note } from "./types";
 
-export type NotePatch = Partial<Pick<Note, "body" | "tags" | "importance" | "deleted" | "folderId">>;
+export type NotePatch = Partial<Pick<Note, "body" | "tags" | "importance" | "deleted" | "folderId" | "orderKey">>;
 
 export async function createNote(body = "", tags: string[] = [], folderId: string | null = null): Promise<Note> {
   const now = Date.now();
-  const n: Note = { id: ulid(), body, tags, importance: 0, createdAt: now, updatedAt: now, deleted: 0, dirty: 1, folderId };
+  const n: Note = { id: ulid(), body, tags, importance: 0, createdAt: now, updatedAt: now, deleted: 0, dirty: 1, folderId, orderKey: null };
   await db.notes.put(n);
   return n;
 }

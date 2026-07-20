@@ -4,10 +4,14 @@ import { resolveDropTarget } from "../lib/dnd";
 import { listNotesIn } from "../lib/folders";
 import { isTap, shouldCommitSwipe } from "../lib/gesture";
 import { firstLineTitle, urlOnly } from "../lib/markdown";
+import { planReorder, type ReorderPlan } from "../lib/reorder";
 import type { SortMode } from "../lib/sort";
 import type { Folder, Note } from "../lib/types";
 import { BackIcon, FolderIcon, TrashIcon } from "./icons";
 import { useAttachmentUrls } from "./useAttachmentUrls";
+
+// ドラッグしたカードを他カードの前/後に挿入するときの共通コールバック型
+type ReorderHandler = (draggedId: string, targetId: string, position: "before" | "after") => void;
 
 // カードの長押しドラッグが運ぶ荷物。noteはメモ本体、folderはフォルダそのものを表す
 type DragPayload = { kind: "note"; id: string } | { kind: "folder"; id: string };
@@ -34,10 +38,26 @@ type Props = {
   onDeleteFolder: (id: string) => void;
   onMoveNote: (noteId: string, folderId: string | null) => void;
   onMoveFolder: (id: string, parentId: string | null) => void;
+  onReorderNote: (plan: ReorderPlan<{ id: string; orderKey: number | null }>) => void;
+  onReorderFolder: (plan: ReorderPlan<{ id: string; orderKey: number | null }>) => void;
 };
 
 export function NoteList(p: Props) {
   const isBrowsingFolder = p.isBrowsingFolder;
+
+  // ドラッグ中のカードを他カードの前/後へ挿入する（同種のみ）。前後キーの計算はplanReorder（純関数）に委ね、
+  // ここでは対象リスト（現在の表示順）を渡してApp側の書き込みハンドラへ計画を渡すだけにする
+  const handleReorderNote: ReorderHandler = (draggedId, targetId, position) => {
+    const items = p.notes.map((n) => ({ id: n.id, orderKey: n.orderKey ?? null }));
+    const plan = planReorder(items, draggedId, targetId, position);
+    if (plan) p.onReorderNote(plan);
+  };
+  const handleReorderFolder: ReorderHandler = (draggedId, targetId, position) => {
+    const items = p.childFolders.map((f) => ({ id: f.id, orderKey: f.orderKey ?? null }));
+    const plan = planReorder(items, draggedId, targetId, position);
+    if (plan) p.onReorderFolder(plan);
+  };
+
   return (
     <div className="list">
       <div className="toolbar">
@@ -55,6 +75,7 @@ export function NoteList(p: Props) {
           <option value="created">新しい順</option>
           <option value="updated">更新順</option>
           <option value="importance">重要度順</option>
+          <option value="manual">手動</option>
         </select>
         {isBrowsingFolder && <button onClick={p.onCreateFolder}>フォルダ＋</button>}
         <button className="primary" onClick={p.onCreate}>新規</button>
@@ -78,6 +99,7 @@ export function NoteList(p: Props) {
             onDelete={() => p.onDeleteFolder(f.id)}
             onMoveNote={p.onMoveNote}
             onMoveFolder={p.onMoveFolder}
+            onReorder={handleReorderFolder}
           />
         ))}
       {p.notes.map((n) => (
@@ -90,6 +112,7 @@ export function NoteList(p: Props) {
           currentLocationId={n.folderId}
           onMoveNote={p.onMoveNote}
           onMoveFolder={p.onMoveFolder}
+          onReorder={handleReorderNote}
         >
           <div className="card-title">
             {n.importance > 0 && <span className="card-stars">{"★".repeat(n.importance)}</span>}
@@ -158,12 +181,14 @@ function FolderCard({
   onDelete,
   onMoveNote,
   onMoveFolder,
+  onReorder,
 }: {
   folder: Folder;
   onOpen: () => void;
   onDelete: () => void;
   onMoveNote: (noteId: string, folderId: string | null) => void;
   onMoveFolder: (id: string, parentId: string | null) => void;
+  onReorder: ReorderHandler;
 }) {
   const count = useLiveQuery(async () => (await listNotesIn(folder.id)).length, [folder.id], 0);
   return (
@@ -175,6 +200,7 @@ function FolderCard({
       currentLocationId={folder.parentId}
       onMoveNote={onMoveNote}
       onMoveFolder={onMoveFolder}
+      onReorder={onReorder}
     >
       <FolderIcon size={14} className="folder-icon" />
       <span className="folder-name">{folder.name}</span>
@@ -196,6 +222,7 @@ function SwipeableCard({
   currentLocationId,
   onMoveNote,
   onMoveFolder,
+  onReorder,
 }: {
   onDelete: () => void;
   onOpen: () => void;
@@ -207,6 +234,8 @@ function SwipeableCard({
   currentLocationId?: string | null;
   onMoveNote?: (noteId: string, folderId: string | null) => void;
   onMoveFolder?: (id: string, parentId: string | null) => void;
+  // フォルダ/パンくずへのドロップでない場合、ホバー中の同種カードの前/後へ挿入する（並べ替え）
+  onReorder?: ReorderHandler;
 }) {
   const [dx, setDx] = useState(0);
   // 判定はrefで行う（高速スワイプではstateの反映がpointerupに間に合わないため）
@@ -225,12 +254,20 @@ function SwipeableCard({
   const pressTimer = useRef<number | undefined>(undefined);
   const pointerIdRef = useRef<number | null>(null);
   const dropTargetRef = useRef<Element | null>(null);
+  // 並べ替え挿入インジケータのホバー先（フォルダ/パンくずへのドロップでない場合にのみ使う）
+  const insertTargetRef = useRef<HTMLElement | null>(null);
+  const insertBeforeRef = useRef(true);
   const cardRef = useRef<HTMLDivElement | null>(null);
   const draggable = dragPayload !== undefined;
 
   function clearDropHighlight() {
     dropTargetRef.current?.classList.remove("drop-active");
     dropTargetRef.current = null;
+  }
+
+  function clearInsertHighlight() {
+    insertTargetRef.current?.classList.remove("insert-before", "insert-after");
+    insertTargetRef.current = null;
   }
 
   function reset() {
@@ -247,6 +284,7 @@ function SwipeableCard({
     setIsDragMode(false);
     setDragOffset({ x: 0, y: 0 });
     clearDropHighlight();
+    clearInsertHighlight();
     pointerIdRef.current = null;
   }
 
@@ -262,16 +300,24 @@ function SwipeableCard({
     }
   }
 
-  // ドロップ先を解決し、有効なら移動を実行する（カード自身のonPointerUpと、下のdocumentフォールバックの両方から呼ぶ）
+  // ドロップ先を解決し、有効なら移動を実行する（カード自身のonPointerUpと、下のdocumentフォールバックの両方から呼ぶ）。
+  // フォルダ/パンくずへのドロップ（既存の移動）でない場合は、ホバー中の挿入インジケータに従って並べ替えを試みる
   function resolveDragMove() {
     if (!dragPayload) return;
     const resolved = resolveDropTarget(dropTargetRef.current);
-    if (resolved === "none") return;
-    const isSelf = dragPayload.kind === "folder" && resolved === dragPayload.id;
-    const isSameLocation = resolved === (currentLocationId ?? null);
-    if (isSelf || isSameLocation) return;
-    if (dragPayload.kind === "note") onMoveNote?.(dragPayload.id, resolved);
-    else onMoveFolder?.(dragPayload.id, resolved);
+    if (resolved !== "none") {
+      const isSelf = dragPayload.kind === "folder" && resolved === dragPayload.id;
+      const isSameLocation = resolved === (currentLocationId ?? null);
+      if (isSelf || isSameLocation) return;
+      if (dragPayload.kind === "note") onMoveNote?.(dragPayload.id, resolved);
+      else onMoveFolder?.(dragPayload.id, resolved);
+      return;
+    }
+    const insertTarget = insertTargetRef.current;
+    const targetId = insertTarget?.getAttribute("data-reorder-id");
+    if (targetId && targetId !== dragPayload.id) {
+      onReorder?.(dragPayload.id, targetId, insertBeforeRef.current ? "before" : "after");
+    }
   }
 
   // ドラッグ中はスクロールを止めたい。touchActionは動的に変更できないため、非passiveのtouchmoveで止める
@@ -301,13 +347,14 @@ function SwipeableCard({
       document.removeEventListener("pointerup", finish);
       document.removeEventListener("pointercancel", finish);
     };
-  }, [isDragMode, dragPayload, currentLocationId, onMoveNote, onMoveFolder]);
+  }, [isDragMode, dragPayload, currentLocationId, onMoveNote, onMoveFolder, onReorder]);
 
-  // アンマウント時にタイマーと、ドロップ先に残っているハイライトの後始末をする
+  // アンマウント時にタイマーと、ドロップ先/挿入インジケータに残っているハイライトの後始末をする
   useEffect(
     () => () => {
       window.clearTimeout(pressTimer.current);
       clearDropHighlight();
+      clearInsertHighlight();
     },
     []
   );
@@ -325,6 +372,9 @@ function SwipeableCard({
         ref={cardRef}
         className={fullClass}
         data-drop-folder={dragPayload?.kind === "folder" ? dragPayload.id : undefined}
+        // 並べ替え挿入インジケータ用（同種のカードだけを対象にするためkindも埋め込む）
+        data-reorder-kind={dragPayload?.kind}
+        data-reorder-id={dragPayload?.id}
         style={
           isDragMode
             ? {
@@ -374,11 +424,57 @@ function SwipeableCard({
           if (dragModeRef.current) {
             setDragOffset({ x: dxNow, y: dyNow });
             const el = document.elementFromPoint(e.clientX, e.clientY);
-            const target = el?.closest("[data-drop-folder]") ?? null;
-            if (target !== dropTargetRef.current) {
+            const dropEl = el?.closest("[data-drop-folder]") ?? null;
+
+            // フォルダをフォルダカードへドラッグ中は、フォルダカードは常にdata-drop-folderを持つため
+            // 何もしなければ常に「子として移動」判定が勝ってしまい並べ替えが起動できない。
+            // カード上下端（外側25%ずつ）は並べ替え、中央帯は既存の「子として移動」に振り分ける
+            let moveTarget: Element | null = dropEl;
+            let edgeInsert: { el: HTMLElement; before: boolean } | null = null;
+            if (
+              dropEl &&
+              dragPayload?.kind === "folder" &&
+              dropEl.getAttribute("data-reorder-kind") === "folder" &&
+              dropEl.getAttribute("data-reorder-id") !== dragPayload.id
+            ) {
+              const rect = dropEl.getBoundingClientRect();
+              const relY = (e.clientY - rect.top) / rect.height;
+              if (relY < 0.25 || relY > 0.75) {
+                edgeInsert = { el: dropEl as HTMLElement, before: relY < 0.25 };
+                moveTarget = null;
+              }
+            }
+
+            if (moveTarget !== dropTargetRef.current) {
               clearDropHighlight();
-              target?.classList.add("drop-active");
-              dropTargetRef.current = target;
+              moveTarget?.classList.add("drop-active");
+              dropTargetRef.current = moveTarget;
+            }
+
+            // 「子として移動」に振り分けなかった場合だけ、並べ替え挿入インジケータを判定する
+            if (moveTarget === null && dragPayload) {
+              const candidate =
+                edgeInsert?.el ?? ((el?.closest(`[data-reorder-kind="${dragPayload.kind}"]`) ?? null) as HTMLElement | null);
+              const validTarget =
+                candidate && candidate.getAttribute("data-reorder-id") !== dragPayload.id ? candidate : null;
+              if (validTarget) {
+                const before = edgeInsert
+                  ? edgeInsert.before
+                  : (() => {
+                      const rect = validTarget.getBoundingClientRect();
+                      return e.clientY < rect.top + rect.height / 2;
+                    })();
+                if (validTarget !== insertTargetRef.current || before !== insertBeforeRef.current) {
+                  clearInsertHighlight();
+                  validTarget.classList.add(before ? "insert-before" : "insert-after");
+                  insertTargetRef.current = validTarget;
+                  insertBeforeRef.current = before;
+                }
+              } else {
+                clearInsertHighlight();
+              }
+            } else {
+              clearInsertHighlight();
             }
             return;
           }

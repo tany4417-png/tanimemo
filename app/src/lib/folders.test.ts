@@ -13,6 +13,8 @@ import {
   moveFolder,
   moveNote,
   renameFolder,
+  reorderFolder,
+  reorderNote,
   repairOrphans,
 } from "./folders";
 
@@ -62,6 +64,21 @@ describe("フォルダCRUD", () => {
     const roots = await listChildFolders(null);
     expect(roots.map((f) => f.name).sort()).toEqual(["root1", "root2"]);
     expect(roots.map((f) => f.id).sort()).toEqual([r1.id, r2.id].sort());
+  });
+
+  it("listChildFoldersはorderKey昇順（nullは末尾、null同士はname昇順）で返す", async () => {
+    const parent = await createFolder("親", null);
+    const b = await createFolder("b-null", parent.id);
+    const a = await createFolder("a-null", parent.id);
+    const withKey2 = await createFolder("key2", parent.id);
+    const withKey1 = await createFolder("key1", parent.id);
+    await db.folders.update(withKey2.id, { orderKey: 2 });
+    await db.folders.update(withKey1.id, { orderKey: 1 });
+    void b;
+    void a;
+
+    const children = await listChildFolders(parent.id);
+    expect(children.map((f) => f.name)).toEqual(["key1", "key2", "a-null", "b-null"]);
   });
 });
 
@@ -148,6 +165,38 @@ describe("moveFolder", () => {
     expect(ok).toBe(true);
     const cur = await db.folders.get(a.id);
     expect(cur?.parentId).toBe(b.id);
+    expect(cur?.dirty).toBe(1);
+  });
+});
+
+describe("reorderNote / reorderFolder", () => {
+  it("reorderNoteはorderKeyを更新しdirty=1・updatedAtが進む", async () => {
+    const note = await createNote("並べ替え対象");
+    await db.notes.update(note.id, { dirty: 0 });
+    const before = note.updatedAt;
+
+    const after = await reorderNote(note.id, 1.5);
+
+    expect(after.orderKey).toBe(1.5);
+    expect(after.dirty).toBe(1);
+    expect(after.updatedAt).toBeGreaterThanOrEqual(before);
+    const cur = await db.notes.get(note.id);
+    expect(cur?.orderKey).toBe(1.5);
+    expect(cur?.dirty).toBe(1);
+  });
+
+  it("reorderFolderはorderKeyを更新しdirty=1・updatedAtが進む", async () => {
+    const folder = await createFolder("並べ替え対象フォルダ", null);
+    await db.folders.update(folder.id, { dirty: 0 });
+    const before = folder.updatedAt;
+
+    const after = await reorderFolder(folder.id, -1);
+
+    expect(after.orderKey).toBe(-1);
+    expect(after.dirty).toBe(1);
+    expect(after.updatedAt).toBeGreaterThanOrEqual(before);
+    const cur = await db.folders.get(folder.id);
+    expect(cur?.orderKey).toBe(-1);
     expect(cur?.dirty).toBe(1);
   });
 });
