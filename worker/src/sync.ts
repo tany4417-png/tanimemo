@@ -26,9 +26,30 @@ export async function upsertAttachment(db: D1Database, a: AttachmentRecord): Pro
 type NoteRow = { id: string; body: string; tags: string; importance: number; created_at: number; updated_at: number; deleted: 0 | 1 };
 type AttRow = { id: string; note_id: string; mime: string; size: number; created_at: number; updated_at: number; deleted: 0 | 1 };
 
+export const TRASH_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+
+export async function purgeExpiredTrash(env: Env, now: number): Promise<void> {
+  const cutoff = now - TRASH_RETENTION_MS;
+  const expired = await env.DB.prepare(
+    `SELECT id FROM attachments
+     WHERE (deleted = 1 AND updated_at < ?1)
+        OR note_id IN (SELECT id FROM notes WHERE deleted = 1 AND updated_at < ?1)`
+  ).bind(cutoff).all<{ id: string }>();
+  for (const row of expired.results) {
+    await env.ATT.delete(`att/${row.id}`);
+  }
+  await env.DB.prepare(
+    `DELETE FROM attachments
+     WHERE (deleted = 1 AND updated_at < ?1)
+        OR note_id IN (SELECT id FROM notes WHERE deleted = 1 AND updated_at < ?1)`
+  ).bind(cutoff).run();
+  await env.DB.prepare(`DELETE FROM notes WHERE deleted = 1 AND updated_at < ?1`).bind(cutoff).run();
+}
+
 export async function handleSync(req: Request, env: Env): Promise<Response> {
   const body = (await req.json()) as SyncRequest;
   const now = Date.now();
+  await purgeExpiredTrash(env, now);
   for (const n of body.notes ?? []) await upsertNote(env.DB, n);
   for (const a of body.attachments ?? []) await upsertAttachment(env.DB, a);
   const noteRows = await env.DB.prepare(`SELECT * FROM notes WHERE received_at > ?1`).bind(body.since).all<NoteRow>();

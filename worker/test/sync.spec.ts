@@ -66,4 +66,32 @@ describe("/api/sync", () => {
     expect(data.attachments).toHaveLength(1);
     expect(data.attachments[0].noteId).toBe("01NOTE");
   });
+
+  it("30日を過ぎた削除済みメモは同期時に完全削除される", async () => {
+    const old = Date.now() - 31 * 24 * 60 * 60 * 1000;
+    await sync({ since: 0, notes: [note({ id: "OLD", updatedAt: old, deleted: 1 })], attachments: [] });
+    const r = await (await sync({ since: 0, notes: [], attachments: [] })).json() as any;
+    expect(r.notes.find((n: any) => n.id === "OLD")).toBeUndefined();
+  });
+
+  it("30日以内の削除済みメモは残る（復元可能）", async () => {
+    const recent = Date.now() - 1 * 24 * 60 * 60 * 1000;
+    await sync({ since: 0, notes: [note({ id: "RECENT", updatedAt: recent, deleted: 1 })], attachments: [] });
+    const r = await (await sync({ since: 0, notes: [], attachments: [] })).json() as any;
+    expect(r.notes.find((n: any) => n.id === "RECENT")?.deleted).toBe(1);
+  });
+
+  it("期限切れメモの添付はR2実体ごと消える", async () => {
+    const old = Date.now() - 31 * 24 * 60 * 60 * 1000;
+    // 添付をPUTで作成（R2実体あり）→ 親メモを期限切れtombstoneでpush
+    await SELF.fetch("https://example.com/api/attachments/PURGEATT?noteId=OLDN", {
+      method: "PUT", headers: { Authorization: "Bearer test-token", "Content-Type": "image/png" }, body: new Uint8Array([1]),
+    });
+    await sync({ since: 0, notes: [note({ id: "OLDN", updatedAt: old, deleted: 1 })], attachments: [] });
+    await sync({ since: 0, notes: [], attachments: [] }); // purge発火
+    const get = await SELF.fetch("https://example.com/api/attachments/PURGEATT", { headers: { Authorization: "Bearer test-token" } });
+    expect(get.status).toBe(404);
+    const r = await (await sync({ since: 0, notes: [], attachments: [] })).json() as any;
+    expect(r.attachments.find((a: any) => a.id === "PURGEATT")).toBeUndefined();
+  });
 });
