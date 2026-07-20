@@ -8,6 +8,7 @@ import { BackIcon, ImageIcon } from "./icons";
 import { useAttachmentUrls } from "./useAttachmentUrls";
 
 type Props = {
+  syncBar: React.ReactNode;
   note: Note;
   startEditing?: boolean;
   onChange: (patch: { body?: string; tags?: string[]; importance?: 0 | 1 | 2 | 3 }) => void;
@@ -18,7 +19,7 @@ type Props = {
   onAttached?: () => void;
 };
 
-export function NoteScreen({ note, startEditing, onChange, onDelete, onBack, onMoved, onAttached }: Props) {
+export function NoteScreen({ syncBar, note, startEditing, onChange, onDelete, onBack, onMoved, onAttached }: Props) {
   const [editing, setEditing] = useState(startEditing ?? false);
   const [draft, setDraft] = useState(note.body);
   const [movePickerOpen, setMovePickerOpen] = useState(false);
@@ -71,39 +72,42 @@ export function NoteScreen({ note, startEditing, onChange, onDelete, onBack, onM
 
   return (
     <div className="note">
-      <div className="toolbar">
-        <button className="icon-btn" onClick={onBack} aria-label="戻る">
-          <BackIcon />
-        </button>
-        <span className="stars">
-          {[1, 2, 3].map((i) => (
-            <button
-              key={i}
-              className={note.importance >= i ? "star on" : "star"}
-              onClick={() => onChange({ importance: (note.importance === i ? i - 1 : i) as 0 | 1 | 2 | 3 })}
-            >
-              ★
-            </button>
-          ))}
-        </span>
-        <button onClick={() => setMovePickerOpen((v) => !v)}>移動…</button>
-        <button className="icon-btn" aria-label="写真を添付" onClick={() => fileInputRef.current?.click()}>
-          <ImageIcon />
-        </button>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*"
-          multiple
-          style={{ display: "none" }}
-          onChange={onPickFiles}
-        />
-        {editing ? (
-          <button className="primary" onClick={save}>保存</button>
-        ) : (
-          <button onClick={() => { setDraft(note.body); setEditing(true); }}>編集</button>
-        )}
-        <button className="danger" onClick={onDelete}>削除</button>
+      <div className="list-header">
+        {syncBar}
+        <div className="toolbar">
+          <button className="icon-btn" onClick={onBack} aria-label="戻る">
+            <BackIcon />
+          </button>
+          <span className="stars">
+            {[1, 2, 3].map((i) => (
+              <button
+                key={i}
+                className={note.importance >= i ? "star on" : "star"}
+                onClick={() => onChange({ importance: (note.importance === i ? i - 1 : i) as 0 | 1 | 2 | 3 })}
+              >
+                ★
+              </button>
+            ))}
+          </span>
+          <button onClick={() => setMovePickerOpen((v) => !v)}>移動…</button>
+          <button className="icon-btn" aria-label="写真を添付" onClick={() => fileInputRef.current?.click()}>
+            <ImageIcon />
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            style={{ display: "none" }}
+            onChange={onPickFiles}
+          />
+          {editing ? (
+            <button className="primary" onClick={save}>保存</button>
+          ) : (
+            <button onClick={() => { setDraft(note.body); setEditing(true); }}>編集</button>
+          )}
+          <button className="danger" onClick={onDelete}>削除</button>
+        </div>
       </div>
       {movePickerOpen && (
         <div className="folder-picker">

@@ -4,18 +4,20 @@ import { createNote } from "./notes";
 import type { Folder } from "./types";
 import {
   createFolder,
-  deleteFolderKeepingContents,
+  deleteFolderWithContents,
   flattenFolderTree,
   folderPath,
   listAllFolders,
   listChildFolders,
   listNotesIn,
+  listTrashedFolders,
   moveFolder,
   moveNote,
   renameFolder,
   reorderFolder,
   reorderNote,
   repairOrphans,
+  restoreFolderWithContents,
 } from "./folders";
 
 beforeEach(async () => {
@@ -201,39 +203,124 @@ describe("reorderNote / reorderFolder", () => {
   });
 });
 
-describe("deleteFolderKeepingContents", () => {
-  it("直下メモと子フォルダを親へ付け替え、フォルダをtombstone化し全部dirtyを立てる", async () => {
+describe("deleteFolderWithContents", () => {
+  it("対象フォルダと子フォルダ・直下メモをまとめてtombstone化し全部dirtyを立てる", async () => {
     const grandparent = await createFolder("祖父", null);
     const target = await createFolder("対象", grandparent.id);
     const childFolder = await createFolder("子フォルダ", target.id);
     const note = await createNote("対象直下のメモ", [], target.id);
+    const childNote = await createNote("子フォルダ直下のメモ", [], childFolder.id);
 
     await db.folders.update(grandparent.id, { dirty: 0 });
     await db.folders.update(target.id, { dirty: 0 });
     await db.folders.update(childFolder.id, { dirty: 0 });
     await db.notes.update(note.id, { dirty: 0 });
+    await db.notes.update(childNote.id, { dirty: 0 });
 
-    await deleteFolderKeepingContents(target.id);
+    await deleteFolderWithContents(target.id);
+
+    const grandparentAfter = await db.folders.get(grandparent.id);
+    expect(grandparentAfter?.deleted).toBe(0); // 祖父（親）自体は無関係で触られない
+    expect(grandparentAfter?.dirty).toBe(0);
 
     const targetAfter = await db.folders.get(target.id);
     expect(targetAfter?.deleted).toBe(1);
     expect(targetAfter?.dirty).toBe(1);
 
     const childFolderAfter = await db.folders.get(childFolder.id);
-    expect(childFolderAfter?.parentId).toBe(grandparent.id);
+    expect(childFolderAfter?.deleted).toBe(1);
     expect(childFolderAfter?.dirty).toBe(1);
 
     const noteAfter = await db.notes.get(note.id);
-    expect(noteAfter?.folderId).toBe(grandparent.id);
+    expect(noteAfter?.deleted).toBe(1);
     expect(noteAfter?.dirty).toBe(1);
+
+    const childNoteAfter = await db.notes.get(childNote.id);
+    expect(childNoteAfter?.deleted).toBe(1);
+    expect(childNoteAfter?.dirty).toBe(1);
   });
 
-  it("親がルート(null)の場合、中身はルート直下へ移る", async () => {
-    const target = await createFolder("対象", null);
-    const note = await createNote("メモ", [], target.id);
-    await deleteFolderKeepingContents(target.id);
-    const noteAfter = await db.notes.get(note.id);
-    expect(noteAfter?.folderId).toBeNull();
+  it("2階層ネストでも孫フォルダ・その直下メモまで再帰的にtombstone化する", async () => {
+    const root = await createFolder("root", null);
+    const mid = await createFolder("mid", root.id);
+    const leaf = await createFolder("leaf", mid.id);
+    const leafNote = await createNote("葉のメモ", [], leaf.id);
+
+    await deleteFolderWithContents(root.id);
+
+    expect((await db.folders.get(root.id))?.deleted).toBe(1);
+    expect((await db.folders.get(mid.id))?.deleted).toBe(1);
+    expect((await db.folders.get(leaf.id))?.deleted).toBe(1);
+    expect((await db.notes.get(leafNote.id))?.deleted).toBe(1);
+  });
+
+  it("既に削除済みのメモには触れない（dirtyが立たない）", async () => {
+    const folder = await createFolder("対象", null);
+    const alreadyDeleted = await createNote("既に削除済み", [], folder.id);
+    await db.notes.update(alreadyDeleted.id, { deleted: 1, dirty: 0 });
+
+    await deleteFolderWithContents(folder.id);
+
+    const after = await db.notes.get(alreadyDeleted.id);
+    expect(after?.dirty).toBe(0);
+  });
+});
+
+describe("restoreFolderWithContents", () => {
+  it("フォルダを復元すると削除済みだった子フォルダ・メモも再帰的に戻る", async () => {
+    const parent = await createFolder("親", null);
+    const child = await createFolder("子", parent.id);
+    const note = await createNote("メモ", [], child.id);
+
+    await deleteFolderWithContents(parent.id);
+    await restoreFolderWithContents(parent.id);
+
+    expect((await db.folders.get(parent.id))?.deleted).toBe(0);
+    expect((await db.folders.get(child.id))?.deleted).toBe(0);
+    expect((await db.notes.get(note.id))?.deleted).toBe(0);
+  });
+
+  it("2階層ネストでも孫フォルダまで再帰的に復元する", async () => {
+    const root = await createFolder("root", null);
+    const mid = await createFolder("mid", root.id);
+    const leaf = await createFolder("leaf", mid.id);
+    await deleteFolderWithContents(root.id);
+
+    await restoreFolderWithContents(root.id);
+
+    expect((await db.folders.get(root.id))?.deleted).toBe(0);
+    expect((await db.folders.get(mid.id))?.deleted).toBe(0);
+    expect((await db.folders.get(leaf.id))?.deleted).toBe(0);
+  });
+
+  it("親フォルダ自体は復元対象に含めない（parentIdはそのまま、親は別途復元可能）", async () => {
+    const grandparent = await createFolder("祖父", null);
+    const target = await createFolder("対象", grandparent.id);
+    await deleteFolderWithContents(grandparent.id); // 祖父ごと削除（targetも道連れでtombstone化される）
+
+    await restoreFolderWithContents(target.id);
+
+    expect((await db.folders.get(target.id))?.deleted).toBe(0);
+    expect((await db.folders.get(grandparent.id))?.deleted).toBe(1);
+    expect((await db.folders.get(target.id))?.parentId).toBe(grandparent.id);
+  });
+});
+
+describe("listTrashedFolders", () => {
+  it("削除済みフォルダをupdatedAt降順で返す", async () => {
+    const a = await createFolder("a", null);
+    const b = await createFolder("b", null);
+    await db.folders.update(a.id, { deleted: 1, updatedAt: 100 });
+    await db.folders.update(b.id, { deleted: 1, updatedAt: 200 });
+
+    const trashed = await listTrashedFolders();
+    expect(trashed.map((f) => f.id)).toEqual([b.id, a.id]);
+  });
+
+  it("削除されていないフォルダは含めない", async () => {
+    const alive = await createFolder("生存", null);
+    const trashed = await listTrashedFolders();
+    expect(trashed.find((f) => f.id === alive.id)).toBeUndefined();
   });
 });
 

@@ -34,9 +34,16 @@ h2 {
 .app { max-width: 720px; margin: 0 auto; padding: 8px; }
 .toolbar {
   display: flex; gap: 8px; align-items: center; padding: 8px 0;
-  position: sticky; top: 0; background: var(--paper); border-bottom: 1px solid var(--rule);
 }
 .toolbar .search { flex: 1; min-width: 0; }
+/* 一覧・メモ・設定・ゴミ箱の各画面の上部一式（同期バー・ツールバー・パンくず・タグバー）をまとめて
+   スクロールしても上部に固定するラッパ。個々の要素ではなくこのラッパ自体をstickyにすることで、
+   複数のstickyが競合してズレたり背後のカードが透けたりしないようにする */
+.list-header {
+  position: sticky; top: 0; z-index: 5; background: var(--paper);
+  padding-top: env(safe-area-inset-top);
+  border-bottom: 1px solid var(--rule);
+}
 input, select, textarea, button { font: inherit; }
 input, select, textarea {
   /* iOS Safariは16px未満のフォーカスで自動ズームしてしまう。ピンチズームも解除されないため
@@ -88,7 +95,7 @@ button.icon-btn { width: 36px; height: 36px; padding: 0; }
 
 .syncbar {
   display: flex; gap: 8px; align-items: center; font-size: 12px; color: var(--ink-soft);
-  padding: 6px 0; background: var(--paper); border-bottom: 1px solid var(--rule);
+  padding: 6px 0; background: var(--paper);
 }
 .syncbar .spacer { flex: 1; }
 .syncbar button { padding: 4px 10px; font-size: 12px; min-height: 28px; }
@@ -107,12 +114,21 @@ button.icon-btn { width: 36px; height: 36px; padding: 0; }
 .swipe-wrap .card { margin-bottom: 0; position: relative; user-select: none; }
 /* フォルダ群の最後のカード直後にあるメモカードにだけ8pxを足し、直前の10pxと合わせて section間18pxにする */
 .swipe-wrap:has(.folder-card) + .swipe-wrap:not(:has(.folder-card)) { margin-top: 8px; }
+/* 2段階スワイプ削除の削除ボタン本体。幅96px固定でカードの右側に常駐し、カードがスワイプで
+   左へ引かれた分だけ露出する（カード側のtranslateXは-96pxを超えないようクランプ済み） */
 .swipe-bg {
-  position: absolute; inset: 0; display: flex; align-items: center; justify-content: flex-end; gap: 6px;
-  padding-right: 18px; background: var(--vermilion); color: #fff; border-radius: 8px; font-weight: 600;
+  position: absolute; top: 0; right: 0; bottom: 0; width: 96px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  background: var(--vermilion); color: #fff; border: none; border-radius: 0 8px 8px 0;
+  font-weight: 600; font-size: 12px; padding: 0;
 }
 .trash-note { font-size: 0.85rem; color: var(--ink-soft); }
 .trash-card button { margin-top: 6px; }
+.trash-folder-title { display: flex; align-items: center; gap: 6px; font-size: 16px; font-weight: 600; }
+.trash-kind {
+  font-size: 11px; font-weight: 400; color: var(--ink-soft);
+  border: 1px solid var(--rule); border-radius: 999px; padding: 1px 8px;
+}
 
 .breadcrumb { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; font-size: 13px; padding-bottom: 8px; }
 .crumb {

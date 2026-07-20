@@ -138,19 +138,66 @@ export async function repairOrphans(): Promise<number> {
   return fixed;
 }
 
-export async function deleteFolderKeepingContents(id: string): Promise<void> {
+// idとその子孫（再帰）のidをすべて集めて返す（idそのものを含む）
+function collectWithDescendants(folders: Folder[], id: string): Set<string> {
+  const result = new Set<string>([id]);
+  let added = true;
+  while (added) {
+    added = false;
+    for (const f of folders) {
+      if (f.parentId !== null && result.has(f.parentId) && !result.has(f.id)) {
+        result.add(f.id);
+        added = true;
+      }
+    }
+  }
+  return result;
+}
+
+// 対象フォルダを中身ごと（子孫フォルダ・その直下の未削除メモすべて）tombstone化する。1トランザクション
+export async function deleteFolderWithContents(id: string): Promise<void> {
   await db.transaction("rw", db.folders, db.notes, async () => {
     const cur = await db.folders.get(id);
     if (!cur) throw new Error(`folder not found: ${id}`);
-    const parentId = cur.parentId;
-    const childNotes = (await db.notes.toArray()).filter((n) => n.folderId === id);
-    for (const n of childNotes) {
-      await updateNote(n.id, { folderId: parentId });
+
+    const targetIds = collectWithDescendants(await db.folders.toArray(), id);
+
+    const targetNotes = (await db.notes.toArray()).filter(
+      (n) => n.deleted === 0 && n.folderId !== null && targetIds.has(n.folderId)
+    );
+    for (const n of targetNotes) {
+      await updateNote(n.id, { deleted: 1 });
     }
-    const childFolders = (await db.folders.toArray()).filter((f) => f.parentId === id);
-    for (const f of childFolders) {
-      await updateFolder(f.id, { parentId });
+
+    for (const fid of targetIds) {
+      await updateFolder(fid, { deleted: 1 });
     }
-    await updateFolder(id, { deleted: 1 });
   });
+}
+
+// フォルダを復元し、子孫のうち削除済み（deleted=1）のフォルダ・メモも再帰的に復元する
+// （「フォルダを戻せば中身も戻る」）。親フォルダ自体の状態には触れない（別途復元可能）
+export async function restoreFolderWithContents(id: string): Promise<void> {
+  await db.transaction("rw", db.folders, db.notes, async () => {
+    const cur = await db.folders.get(id);
+    if (!cur) throw new Error(`folder not found: ${id}`);
+
+    const targetIds = collectWithDescendants(await db.folders.toArray(), id);
+
+    const targetNotes = (await db.notes.toArray()).filter(
+      (n) => n.deleted === 1 && n.folderId !== null && targetIds.has(n.folderId)
+    );
+    for (const n of targetNotes) {
+      await updateNote(n.id, { deleted: 0 });
+    }
+
+    for (const fid of targetIds) {
+      const f = await db.folders.get(fid);
+      if (f && f.deleted === 1) await updateFolder(fid, { deleted: 0 });
+    }
+  });
+}
+
+export async function listTrashedFolders(): Promise<Folder[]> {
+  return (await db.folders.toArray()).filter((f) => f.deleted === 1).sort((a, b) => b.updatedAt - a.updatedAt);
 }

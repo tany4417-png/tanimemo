@@ -8,7 +8,7 @@ import { TrashScreen } from "./components/TrashScreen";
 import { addImageFromBlob } from "./lib/attachments";
 import { db } from "./lib/db";
 import { exportZip, localYmd } from "./lib/export";
-import { createFolder, deleteFolderKeepingContents, folderPath, listChildFolders, moveFolder, moveNote, renameFolder, reorderFolder, reorderNote, repairOrphans } from "./lib/folders";
+import { createFolder, deleteFolderWithContents, folderPath, listChildFolders, moveFolder, moveNote, renameFolder, reorderFolder, reorderNote, repairOrphans } from "./lib/folders";
 import { allTags, createNote, listActiveNotes, purgeExpiredTrashLocal, softDeleteNote, updateNote, type NotePatch } from "./lib/notes";
 import type { ReorderPlan } from "./lib/reorder";
 import { filterByTags, searchNotes, sortNotes, type SortMode } from "./lib/sort";
@@ -148,7 +148,7 @@ export default function App() {
 
   const onDeleteFolder = useCallback(
     async (id: string) => {
-      await deleteFolderKeepingContents(id);
+      await deleteFolderWithContents(id);
       scheduleSync();
     },
     [scheduleSync]
@@ -195,13 +195,25 @@ export default function App() {
     [scheduleSync]
   );
 
+  // 同期バー。一覧・メモ・設定・ゴミ箱それぞれのヘッダー（.list-header）内にまとめて表示するため、
+  // 要素として一度だけ組み立てて各画面へ渡す（画面ごとに個別にposition:stickyを重ねると二重に固定されてしまうため）
+  const syncBar = (
+    <SyncStatus
+      status={status}
+      pending={pending}
+      lastSync={lastSync}
+      onSync={() => void syncNow()}
+      onSettings={() => setView({ name: "settings" })}
+    />
+  );
+
   return (
     <main className="app">
-      <SyncStatus status={status} pending={pending} lastSync={lastSync} onSync={() => void syncNow()} onSettings={() => setView({ name: "settings" })} />
       {/* 画面切替（list/note/settings/trash）ごとにkeyを変えてフェード＋スライドで再マウントさせる。DOM構造変更はこのラッパのみ */}
       <div className="view-transition" key={view.name}>
         {view.name === "list" && (
           <NoteList
+            syncBar={syncBar}
             notes={shown}
             allTags={allTags(notes)}
             sort={sort}
@@ -231,6 +243,7 @@ export default function App() {
         )}
         {view.name === "note" && current && (
           <NoteScreen
+            syncBar={syncBar}
             note={current}
             startEditing={view.name === "note" && view.isNew === true}
             onChange={async (patch) => {
@@ -249,6 +262,7 @@ export default function App() {
         )}
         {view.name === "settings" && (
           <Settings
+            syncBar={syncBar}
             token={token}
             onSave={(t) => {
               localStorage.setItem("tanimemo.token", t);
@@ -271,7 +285,7 @@ export default function App() {
           />
         )}
         {view.name === "trash" && (
-          <TrashScreen onBack={() => setView({ name: "settings" })} onRestored={() => scheduleSync()} />
+          <TrashScreen syncBar={syncBar} onBack={() => setView({ name: "settings" })} onRestored={() => scheduleSync()} />
         )}
       </div>
     </main>

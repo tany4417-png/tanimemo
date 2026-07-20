@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { resolveDropTarget } from "../lib/dnd";
 import { listNotesIn } from "../lib/folders";
-import { isTap, shouldCommitSwipe } from "../lib/gesture";
+import { isTap, shouldOpenSwipe } from "../lib/gesture";
 import { firstLineTitle, urlOnly } from "../lib/markdown";
 import { planReorder, type ReorderPlan } from "../lib/reorder";
 import type { SortMode } from "../lib/sort";
@@ -17,6 +17,7 @@ type ReorderHandler = (draggedId: string, targetId: string, position: "before" |
 type DragPayload = { kind: "note"; id: string } | { kind: "folder"; id: string };
 
 type Props = {
+  syncBar: React.ReactNode;
   notes: Note[];
   allTags: string[];
   sort: SortMode;
@@ -44,6 +45,8 @@ type Props = {
 
 export function NoteList(p: Props) {
   const isBrowsingFolder = p.isBrowsingFolder;
+  // スワイプで削除ボタンが開いているカードのid（メモ・フォルダ共通、開けるのは同時に1枚だけ）
+  const [openId, setOpenId] = useState<string | null>(null);
 
   // ドラッグ中のカードを他カードの前/後へ挿入する（同種のみ）。前後キーの計算はplanReorder（純関数）に委ね、
   // ここでは対象リスト（現在の表示順）を渡してApp側の書き込みハンドラへ計画を渡すだけにする
@@ -60,43 +63,52 @@ export function NoteList(p: Props) {
 
   return (
     <div className="list">
-      <div className="toolbar">
-        {isBrowsingFolder && p.folderPath.length > 0 && (
-          <button
-            className="icon-btn"
-            aria-label="親フォルダへ戻る"
-            onClick={() => p.onOpenFolder(p.folderPath.length >= 2 ? p.folderPath[p.folderPath.length - 2].id : null)}
-          >
-            <BackIcon />
-          </button>
+      <div className="list-header">
+        {p.syncBar}
+        <div className="toolbar">
+          {isBrowsingFolder && p.folderPath.length > 0 && (
+            <button
+              className="icon-btn"
+              aria-label="親フォルダへ戻る"
+              onClick={() => p.onOpenFolder(p.folderPath.length >= 2 ? p.folderPath[p.folderPath.length - 2].id : null)}
+            >
+              <BackIcon />
+            </button>
+          )}
+          <input className="search" placeholder="検索" value={p.query} onChange={(e) => p.onQuery(e.target.value)} />
+          <select value={p.sort} onChange={(e) => p.onSort(e.target.value as SortMode)}>
+            <option value="created">新しい順</option>
+            <option value="updated">更新順</option>
+            <option value="importance">重要度順</option>
+            <option value="manual">手動</option>
+          </select>
+          {isBrowsingFolder && <button onClick={p.onCreateFolder}>フォルダ＋</button>}
+          <button className="primary" onClick={p.onCreate}>新規</button>
+        </div>
+        {isBrowsingFolder && (
+          <Breadcrumb path={p.folderPath} onNavigate={p.onOpenFolder} onRenameCurrent={p.onRenameCurrentFolder} />
         )}
-        <input className="search" placeholder="検索" value={p.query} onChange={(e) => p.onQuery(e.target.value)} />
-        <select value={p.sort} onChange={(e) => p.onSort(e.target.value as SortMode)}>
-          <option value="created">新しい順</option>
-          <option value="updated">更新順</option>
-          <option value="importance">重要度順</option>
-          <option value="manual">手動</option>
-        </select>
-        {isBrowsingFolder && <button onClick={p.onCreateFolder}>フォルダ＋</button>}
-        <button className="primary" onClick={p.onCreate}>新規</button>
-      </div>
-      {isBrowsingFolder && (
-        <Breadcrumb path={p.folderPath} onNavigate={p.onOpenFolder} onRenameCurrent={p.onRenameCurrentFolder} />
-      )}
-      <div className="tagbar">
-        {p.allTags.map((t) => (
-          <button key={t} className={p.activeTags.includes(t) ? "tag active" : "tag"} onClick={() => p.onToggleTag(t)}>
-            {t}
-          </button>
-        ))}
+        <div className="tagbar">
+          {p.allTags.map((t) => (
+            <button key={t} className={p.activeTags.includes(t) ? "tag active" : "tag"} onClick={() => p.onToggleTag(t)}>
+              {t}
+            </button>
+          ))}
+        </div>
       </div>
       {isBrowsingFolder &&
         p.childFolders.map((f) => (
           <FolderCard
             key={f.id}
             folder={f}
+            isOpen={openId === f.id}
+            onOpenChange={(open) => setOpenId(open ? f.id : null)}
+            onCloseOthers={() => setOpenId((cur) => (cur === f.id ? cur : null))}
             onOpen={() => p.onOpenFolder(f.id)}
-            onDelete={() => p.onDeleteFolder(f.id)}
+            onDelete={() => {
+              p.onDeleteFolder(f.id);
+              setOpenId((cur) => (cur === f.id ? null : cur));
+            }}
             onMoveNote={p.onMoveNote}
             onMoveFolder={p.onMoveFolder}
             onReorder={handleReorderFolder}
@@ -105,7 +117,13 @@ export function NoteList(p: Props) {
       {p.notes.map((n) => (
         <SwipeableCard
           key={n.id}
-          onDelete={() => p.onDelete(n.id)}
+          isOpen={openId === n.id}
+          onOpenChange={(open) => setOpenId(open ? n.id : null)}
+          onCloseOthers={() => setOpenId((cur) => (cur === n.id ? cur : null))}
+          onDelete={() => {
+            p.onDelete(n.id);
+            setOpenId((cur) => (cur === n.id ? null : cur));
+          }}
           onOpen={() => p.onOpen(n.id)}
           // 絞り込み中はドロップ先（フォルダ/パンくず）が画面に無いため、ドラッグ自体を始めさせない
           dragPayload={isBrowsingFolder ? { kind: "note", id: n.id } : undefined}
@@ -177,6 +195,9 @@ function Breadcrumb({
 
 function FolderCard({
   folder,
+  isOpen,
+  onOpenChange,
+  onCloseOthers,
   onOpen,
   onDelete,
   onMoveNote,
@@ -184,6 +205,9 @@ function FolderCard({
   onReorder,
 }: {
   folder: Folder;
+  isOpen: boolean;
+  onOpenChange: (open: boolean) => void;
+  onCloseOthers: () => void;
   onOpen: () => void;
   onDelete: () => void;
   onMoveNote: (noteId: string, folderId: string | null) => void;
@@ -193,6 +217,9 @@ function FolderCard({
   const count = useLiveQuery(async () => (await listNotesIn(folder.id)).length, [folder.id], 0);
   return (
     <SwipeableCard
+      isOpen={isOpen}
+      onOpenChange={onOpenChange}
+      onCloseOthers={onCloseOthers}
       onDelete={onDelete}
       onOpen={onOpen}
       className="folder-card"
@@ -213,7 +240,13 @@ function FolderCard({
 const PRESS_HOLD_MS = 350;
 const PRESS_MOVE_CANCEL_PX = 16;
 
+// スワイプで削除ボタンが開いた状態のときのtranslateX（削除ボタンの幅と一致）
+const SWIPE_OPEN_PX = -96;
+
 function SwipeableCard({
+  isOpen,
+  onOpenChange,
+  onCloseOthers,
   onDelete,
   onOpen,
   className,
@@ -224,6 +257,13 @@ function SwipeableCard({
   onMoveFolder,
   onReorder,
 }: {
+  // このカードの削除ボタンが開いているか（NoteListが「開いているカードid」を1つだけ保持し、controlled化する。
+  // 自分がどのidかはNoteList側の各コールバックに束縛済みなので、このコンポーネント自身はidを持つ必要が無い）
+  isOpen: boolean;
+  // 開く/閉じるをNoteListへ伝える（trueで自分を開く=他は自動的に閉じる、falseで自分を閉じる）
+  onOpenChange: (open: boolean) => void;
+  // 自分以外が開いていれば閉じるよう伝える（他のカードの操作開始時に呼ぶ）
+  onCloseOthers: () => void;
   onDelete: () => void;
   onOpen: () => void;
   className?: string;
@@ -237,16 +277,16 @@ function SwipeableCard({
   // フォルダ/パンくずへのドロップでない場合、ホバー中の同種カードの前/後へ挿入する（並べ替え）
   onReorder?: ReorderHandler;
 }) {
-  const [dx, setDx] = useState(0);
+  // dxは「現在のカードの水平位置」そのもの（閉:0 / 開:SWIPE_OPEN_PX）。ドラッグ中はこの範囲内でリアルタイムに追従する
+  const [dx, setDx] = useState(() => (isOpen ? SWIPE_OPEN_PX : 0));
   // 判定はrefで行う（高速スワイプではstateの反映がpointerupに間に合わないため）
-  const dxRef = useRef(0);
+  const dxRef = useRef(dx);
+  // pointerdown時点でのカード位置（閉:0 / 開:SWIPE_OPEN_PX）。相対移動量dxNowの基準にする
+  const baseDxRef = useRef(0);
   const start = useRef<{ x: number; y: number } | null>(null);
-  const dragging = useRef(false); // 左スワイプ（削除）判定
+  const dragging = useRef(false); // 左右スワイプ（開閉）判定
   // pointerdownからの累計最大移動量（誤タップ防止: これが一定以上ならタップ扱いしない）
   const movedRef = useRef(0);
-  // 直近のpointermove区間の水平速度（px/ms）。フリック確定判定に使う
-  const vxRef = useRef(0);
-  const lastMoveRef = useRef<{ x: number; t: number } | null>(null);
 
   const [isDragMode, setIsDragMode] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
@@ -270,14 +310,11 @@ function SwipeableCard({
     insertTargetRef.current = null;
   }
 
+  // ジェスチャー種別（スワイプ/ドラッグ/タップ）判定用の状態だけを片付ける。dx（開閉の見た目位置）はここでは触らない
   function reset() {
-    dxRef.current = 0;
-    setDx(0);
     start.current = null;
     dragging.current = false;
     movedRef.current = 0;
-    vxRef.current = 0;
-    lastMoveRef.current = null;
     window.clearTimeout(pressTimer.current);
     pressTimer.current = undefined;
     dragModeRef.current = false;
@@ -286,6 +323,12 @@ function SwipeableCard({
     clearDropHighlight();
     clearInsertHighlight();
     pointerIdRef.current = null;
+  }
+
+  // 開閉のどちらかへスナップする（150ms transitionはstyle側でdragging.current===falseのときに適用される）
+  function snapTo(open: boolean) {
+    dxRef.current = open ? SWIPE_OPEN_PX : 0;
+    setDx(dxRef.current);
   }
 
   function enterDragMode() {
@@ -359,15 +402,23 @@ function SwipeableCard({
     []
   );
 
+  // 他のカードが開いたことで自分のisOpenがfalseになった場合など、外部からの開閉状態の変化に追従する。
+  // 自分自身が今まさにジェスチャー中（スワイプ/ドラッグ）なら、その操作の決着を優先し何もしない
+  useEffect(() => {
+    if (dragging.current || dragModeRef.current) return;
+    const target = isOpen ? SWIPE_OPEN_PX : 0;
+    if (dxRef.current !== target) snapTo(isOpen);
+  }, [isOpen]);
+
   const baseClass = className ? `card ${className}` : "card";
   const fullClass = isDragMode ? `${baseClass} dragging` : baseClass;
 
   return (
     <div className="swipe-wrap">
-      <div className="swipe-bg">
+      <button type="button" className="swipe-bg" aria-label="削除" onClick={onDelete}>
         <TrashIcon size={18} />
         削除
-      </div>
+      </button>
       <div
         ref={cardRef}
         className={fullClass}
@@ -387,15 +438,22 @@ function SwipeableCard({
                 // （pointerはsetPointerCaptureで捕捉済みのため、pointerEvents:noneでもmove/upは自分に届く）
                 pointerEvents: "none",
               }
-            : { transform: `translateX(${dx}px)`, touchAction: "pan-y" }
+            : {
+                transform: `translateX(${dx}px)`,
+                // 指で動かしている最中は1:1で追従させ、指を離した後のスナップだけアニメーションさせる
+                transition: dragging.current ? "none" : "transform 150ms ease",
+                touchAction: "pan-y",
+              }
         }
         onPointerDown={(e) => {
+          // 自分以外に開いている（削除ボタンが見えている）カードがあれば、この操作の開始と同時に閉じる
+          onCloseOthers();
           start.current = { x: e.clientX, y: e.clientY };
           dragging.current = false;
-          dxRef.current = 0;
+          // 今のカード位置（閉:0 / 開:SWIPE_OPEN_PX）を基準にする。開いた状態からの右スワイプで閉じる操作を成立させるため
+          baseDxRef.current = isOpen ? SWIPE_OPEN_PX : 0;
+          dxRef.current = baseDxRef.current;
           movedRef.current = 0;
-          vxRef.current = 0;
-          lastMoveRef.current = { x: e.clientX, t: performance.now() };
           pointerIdRef.current = e.pointerId;
           if (draggable) {
             window.clearTimeout(pressTimer.current);
@@ -412,14 +470,6 @@ function SwipeableCard({
           // 誤タップ防止: pointerdownからの累計最大移動量を追跡する
           const distNow = Math.sqrt(dxNow * dxNow + dyNow * dyNow);
           if (distNow > movedRef.current) movedRef.current = distNow;
-
-          // フリック確定用: 直近のpointermove区間の水平速度（px/ms）を追跡する
-          const nowT = performance.now();
-          if (lastMoveRef.current) {
-            const dt = nowT - lastMoveRef.current.t;
-            if (dt > 0) vxRef.current = (e.clientX - lastMoveRef.current.x) / dt;
-          }
-          lastMoveRef.current = { x: e.clientX, t: nowT };
 
           if (dragModeRef.current) {
             setDragOffset({ x: dxNow, y: dyNow });
@@ -485,8 +535,12 @@ function SwipeableCard({
             pressTimer.current = undefined;
           }
 
-          // 開始は左20px以上かつ横成分が縦の1.2倍以上のときだけ（少し始まりやすく）
-          if (!dragging.current && dxNow < -20 && Math.abs(dxNow) > 1.2 * Math.abs(dyNow)) {
+          const horizontalDominant = Math.abs(dxNow) > 1.2 * Math.abs(dyNow);
+          // 開始は左20px以上かつ横成分が縦の1.2倍以上のときだけ（少し始まりやすく）＝削除ボタンを開く方向
+          const opening = dxNow < -20 && horizontalDominant;
+          // 開いている状態からの右20px以上の動きも同じ基準でスワイプ開始とみなす＝閉じる方向
+          const closing = baseDxRef.current === SWIPE_OPEN_PX && dxNow > 20 && horizontalDominant;
+          if (!dragging.current && (opening || closing)) {
             dragging.current = true;
             try {
               (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
@@ -495,7 +549,8 @@ function SwipeableCard({
             }
           }
           if (dragging.current) {
-            dxRef.current = Math.min(0, dxNow);
+            // SWIPE_OPEN_PX〜0の範囲にクランプする（削除ボタンの幅を超えて露出させない）
+            dxRef.current = Math.max(SWIPE_OPEN_PX, Math.min(0, baseDxRef.current + dxNow));
             setDx(dxRef.current);
           }
         }}
@@ -503,14 +558,27 @@ function SwipeableCard({
           const isLink = (e.target as HTMLElement).closest("a") !== null;
           if (dragModeRef.current) {
             resolveDragMove();
-          } else if (dragging.current && shouldCommitSwipe(dxRef.current, vxRef.current)) {
-            onDelete();
+          } else if (dragging.current) {
+            // 指を離した時点でdxRefが-40pxを超えて左にあれば開いた状態にスナップ、それ以外は閉じる
+            const open = shouldOpenSwipe(dxRef.current);
+            snapTo(open);
+            onOpenChange(open);
           } else if (isTap(movedRef.current, dragging.current, dragModeRef.current) && start.current && !isLink) {
-            onOpen();
+            // 開いた状態のカード本体をタップしたときは、ノートを開かず閉じることを優先する
+            if (isOpen) {
+              snapTo(false);
+              onOpenChange(false);
+            } else {
+              onOpen();
+            }
           }
           reset();
         }}
-        onPointerCancel={reset}
+        onPointerCancel={() => {
+          // 中断されたスワイプは、controlled状態（isOpen）に対応する位置へ戻す
+          if (dragging.current) snapTo(isOpen);
+          reset();
+        }}
       >
         {children}
       </div>

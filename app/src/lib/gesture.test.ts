@@ -1,21 +1,21 @@
 import { describe, expect, it } from "vitest";
-import { isTap, shouldCommitSwipe } from "./gesture";
+import { isTap, shouldOpenSwipe } from "./gesture";
 
-describe("shouldCommitSwipe", () => {
-  it("120px近く動く従来の長距離スワイプは確定する", () => {
-    expect(shouldCommitSwipe(-120, 0)).toBe(true);
+describe("shouldOpenSwipe", () => {
+  it("40pxを超えて左に動けば開いた状態にする", () => {
+    expect(shouldOpenSwipe(-41)).toBe(true);
   });
 
-  it("110px未満かつ遅ければ確定しない", () => {
-    expect(shouldCommitSwipe(-80, -0.1)).toBe(false);
+  it("ちょうど40pxでは開かない", () => {
+    expect(shouldOpenSwipe(-40)).toBe(false);
   });
 
-  it("短距離でも速い左フリックなら確定する", () => {
-    expect(shouldCommitSwipe(-70, -0.8)).toBe(true);
+  it("40px未満の左移動では開かない", () => {
+    expect(shouldOpenSwipe(-20)).toBe(false);
   });
 
-  it("60px未満なら速くても確定しない", () => {
-    expect(shouldCommitSwipe(-50, -2)).toBe(false);
+  it("右方向の移動では開かない（開いた状態からの右スワイプは閉じる判定に使う）", () => {
+    expect(shouldOpenSwipe(10)).toBe(false);
   });
 });
 
