@@ -3,24 +3,24 @@ import type { AttachmentRecord, NoteRecord, SyncRequest, SyncResponse } from "./
 
 export async function upsertNote(db: D1Database, n: NoteRecord): Promise<void> {
   await db.prepare(
-    `INSERT INTO notes (id, body, tags, importance, created_at, updated_at, deleted)
-     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+    `INSERT INTO notes (id, body, tags, importance, created_at, updated_at, deleted, received_at)
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
      ON CONFLICT(id) DO UPDATE SET
        body = excluded.body, tags = excluded.tags, importance = excluded.importance,
-       updated_at = excluded.updated_at, deleted = excluded.deleted
+       updated_at = excluded.updated_at, deleted = excluded.deleted, received_at = excluded.received_at
      WHERE excluded.updated_at > notes.updated_at`
-  ).bind(n.id, n.body, JSON.stringify(n.tags), n.importance, n.createdAt, n.updatedAt, n.deleted).run();
+  ).bind(n.id, n.body, JSON.stringify(n.tags), n.importance, n.createdAt, n.updatedAt, n.deleted, Date.now()).run();
 }
 
 export async function upsertAttachment(db: D1Database, a: AttachmentRecord): Promise<void> {
   await db.prepare(
-    `INSERT INTO attachments (id, note_id, mime, size, created_at, updated_at, deleted)
-     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+    `INSERT INTO attachments (id, note_id, mime, size, created_at, updated_at, deleted, received_at)
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
      ON CONFLICT(id) DO UPDATE SET
        mime = excluded.mime, size = excluded.size,
-       updated_at = excluded.updated_at, deleted = excluded.deleted
+       updated_at = excluded.updated_at, deleted = excluded.deleted, received_at = excluded.received_at
      WHERE excluded.updated_at > attachments.updated_at`
-  ).bind(a.id, a.noteId, a.mime, a.size, a.createdAt, a.updatedAt, a.deleted).run();
+  ).bind(a.id, a.noteId, a.mime, a.size, a.createdAt, a.updatedAt, a.deleted, Date.now()).run();
 }
 
 type NoteRow = { id: string; body: string; tags: string; importance: number; created_at: number; updated_at: number; deleted: 0 | 1 };
@@ -31,8 +31,8 @@ export async function handleSync(req: Request, env: Env): Promise<Response> {
   for (const n of body.notes ?? []) await upsertNote(env.DB, n);
   for (const a of body.attachments ?? []) await upsertAttachment(env.DB, a);
   const now = Date.now();
-  const noteRows = await env.DB.prepare(`SELECT * FROM notes WHERE updated_at > ?1`).bind(body.since).all<NoteRow>();
-  const attRows = await env.DB.prepare(`SELECT * FROM attachments WHERE updated_at > ?1`).bind(body.since).all<AttRow>();
+  const noteRows = await env.DB.prepare(`SELECT * FROM notes WHERE received_at > ?1`).bind(body.since).all<NoteRow>();
+  const attRows = await env.DB.prepare(`SELECT * FROM attachments WHERE received_at > ?1`).bind(body.since).all<AttRow>();
   const res: SyncResponse = {
     now,
     notes: noteRows.results.map((r) => ({
