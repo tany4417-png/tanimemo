@@ -8,7 +8,7 @@ export function Settings({ token, onSave, onBack, onExport, onTrash }: Props) {
   return (
     <div className="settings">
       <div className="toolbar">
-        <button onClick={onBack} aria-label="戻る">
+        <button className="icon-btn" onClick={onBack} aria-label="戻る">
           <BackIcon />
         </button>
         <h2>設定</h2>

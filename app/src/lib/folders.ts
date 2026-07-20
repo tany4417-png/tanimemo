@@ -94,6 +94,31 @@ export function flattenFolderTree(
   return result;
 }
 
+// 整合スイープ: 生きているフォルダ(deleted=0)の外を指す孤児メモ・孤児フォルダをルートへ救出する。
+// 通信障害中の並行操作や複数端末のずれた同期タイミングでの取りこぼし対策。戻り値は修正件数
+export async function repairOrphans(): Promise<number> {
+  const aliveFolderIds = new Set((await db.folders.toArray()).filter((f) => f.deleted === 0).map((f) => f.id));
+  let fixed = 0;
+
+  const orphanNotes = (await db.notes.toArray()).filter(
+    (n) => n.deleted === 0 && n.folderId !== null && !aliveFolderIds.has(n.folderId)
+  );
+  for (const n of orphanNotes) {
+    await updateNote(n.id, { folderId: null });
+    fixed += 1;
+  }
+
+  const orphanFolders = (await db.folders.toArray()).filter(
+    (f) => f.deleted === 0 && f.parentId !== null && !aliveFolderIds.has(f.parentId)
+  );
+  for (const f of orphanFolders) {
+    await updateFolder(f.id, { parentId: null });
+    fixed += 1;
+  }
+
+  return fixed;
+}
+
 export async function deleteFolderKeepingContents(id: string): Promise<void> {
   await db.transaction("rw", db.folders, db.notes, async () => {
     const cur = await db.folders.get(id);

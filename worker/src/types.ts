@@ -6,7 +6,8 @@ export type NoteRecord = {
   createdAt: number;
   updatedAt: number;
   deleted: 0 | 1;
-  folderId: string | null;
+  // 旧クライアントはこのフィールド自体を送らないことがある（upsertNoteはその場合folder_idを現状維持する）
+  folderId?: string | null;
 };
 
 export type AttachmentRecord = {

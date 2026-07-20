@@ -46,7 +46,7 @@ export function NoteScreen({ note, startEditing, onChange, onDelete, onBack, onM
   return (
     <div className="note">
       <div className="toolbar">
-        <button onClick={onBack} aria-label="戻る">
+        <button className="icon-btn" onClick={onBack} aria-label="戻る">
           <BackIcon />
         </button>
         <span className="stars">

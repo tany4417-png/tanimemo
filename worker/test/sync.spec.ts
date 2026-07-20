@@ -179,6 +179,29 @@ describe("/api/sync", () => {
     expect(r.notes.find((n: any) => n.id === "OLDFOLDER")).toBeUndefined();
   });
 
+  it("folderIdフィールドの無いpush（旧クライアント）はfolder_idを現状維持する", async () => {
+    await sync({ since: 0, notes: [note({ id: "OLDCLIENT", folderId: "F1" })], attachments: [] });
+    // 旧クライアントを模してfolderIdフィールド自体を持たないオブジェクトをpushする
+    const legacyBody = {
+      since: 0,
+      notes: [{ id: "OLDCLIENT", body: "edited-by-old-client", tags: ["メモ"], importance: 0, createdAt: 100, updatedAt: 200, deleted: 0 }],
+      attachments: [],
+    };
+    const res = await sync(legacyBody);
+    expect(res.status).toBe(200);
+    const data = await (await sync({ since: 0, notes: [], attachments: [] })).json() as any;
+    const after = data.notes.find((n: any) => n.id === "OLDCLIENT");
+    expect(after?.body).toBe("edited-by-old-client");
+    expect(after?.folderId).toBe("F1");
+  });
+
+  it("明示的にfolderId: nullをpushするとルート移動として反映される", async () => {
+    await sync({ since: 0, notes: [note({ id: "EXPLICITNULL", folderId: "F1" })], attachments: [] });
+    await sync({ since: 0, notes: [note({ id: "EXPLICITNULL", folderId: null, updatedAt: 200 })], attachments: [] });
+    const data = await (await sync({ since: 0, notes: [], attachments: [] })).json() as any;
+    expect(data.notes.find((n: any) => n.id === "EXPLICITNULL")?.folderId).toBeNull();
+  });
+
   it("purge済みフォルダidのpushは復活せずpurgedIdsに載る", async () => {
     const old = Date.now() - 31 * 24 * 60 * 60 * 1000;
     await sync({ since: 0, notes: [], attachments: [], folders: [folder({ id: "ZOMBIEFOLDER", updatedAt: old, deleted: 1 })] });

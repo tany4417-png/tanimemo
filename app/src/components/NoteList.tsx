@@ -5,7 +5,7 @@ import { listNotesIn } from "../lib/folders";
 import { firstLineTitle, urlOnly } from "../lib/markdown";
 import type { SortMode } from "../lib/sort";
 import type { Folder, Note } from "../lib/types";
-import { FolderIcon, TrashIcon } from "./icons";
+import { BackIcon, FolderIcon, TrashIcon } from "./icons";
 import { useAttachmentUrls } from "./useAttachmentUrls";
 
 // カードの長押しドラッグが運ぶ荷物。noteはメモ本体、folderはフォルダそのものを表す
@@ -40,6 +40,15 @@ export function NoteList(p: Props) {
   return (
     <div className="list">
       <div className="toolbar">
+        {p.folderPath.length > 0 && (
+          <button
+            className="icon-btn"
+            aria-label="親フォルダへ戻る"
+            onClick={() => p.onOpenFolder(p.folderPath.length >= 2 ? p.folderPath[p.folderPath.length - 2].id : null)}
+          >
+            <BackIcon />
+          </button>
+        )}
         <input className="search" placeholder="検索" value={p.query} onChange={(e) => p.onQuery(e.target.value)} />
         <select value={p.sort} onChange={(e) => p.onSort(e.target.value as SortMode)}>
           <option value="created">新しい順</option>
@@ -244,6 +253,18 @@ function SwipeableCard({
     }
   }
 
+  // ドロップ先を解決し、有効なら移動を実行する（カード自身のonPointerUpと、下のdocumentフォールバックの両方から呼ぶ）
+  function resolveDragMove() {
+    if (!dragPayload) return;
+    const resolved = resolveDropTarget(dropTargetRef.current);
+    if (resolved === "none") return;
+    const isSelf = dragPayload.kind === "folder" && resolved === dragPayload.id;
+    const isSameLocation = resolved === (currentLocationId ?? null);
+    if (isSelf || isSameLocation) return;
+    if (dragPayload.kind === "note") onMoveNote?.(dragPayload.id, resolved);
+    else onMoveFolder?.(dragPayload.id, resolved);
+  }
+
   // ドラッグ中はスクロールを止めたい。touchActionは動的に変更できないため、非passiveのtouchmoveで止める
   useEffect(() => {
     const el = cardRef.current;
@@ -255,7 +276,32 @@ function SwipeableCard({
     return () => el.removeEventListener("touchmove", onTouchMove);
   }, [draggable]);
 
-  useEffect(() => () => window.clearTimeout(pressTimer.current), []);
+  // ドラッグモード中のフォールバック: setPointerCaptureが効かない環境では、指が離れた場所によっては
+  // カード自身にpointerupが届かず固まることがある。documentにも張っておき、確実にドラッグを終了させる。
+  // カード自身のonPointerUpが先に発火してreset()済み（dragModeRef.current=false）なら二重実行しない
+  useEffect(() => {
+    if (!isDragMode) return;
+    function finish() {
+      if (!dragModeRef.current) return;
+      resolveDragMove();
+      reset();
+    }
+    document.addEventListener("pointerup", finish);
+    document.addEventListener("pointercancel", finish);
+    return () => {
+      document.removeEventListener("pointerup", finish);
+      document.removeEventListener("pointercancel", finish);
+    };
+  }, [isDragMode, dragPayload, currentLocationId, onMoveNote, onMoveFolder]);
+
+  // アンマウント時にタイマーと、ドロップ先に残っているハイライトの後始末をする
+  useEffect(
+    () => () => {
+      window.clearTimeout(pressTimer.current);
+      clearDropHighlight();
+    },
+    []
+  );
 
   const baseClass = className ? `card ${className}` : "card";
   const fullClass = isDragMode ? `${baseClass} dragging` : baseClass;
@@ -273,7 +319,10 @@ function SwipeableCard({
         style={
           isDragMode
             ? {
-                transform: `translate(${dragOffset.x}px, ${dragOffset.y}px) scale(1.02)`,
+                // 縮小して下のドロップ先(フォルダ/パンくず)が見えるようにする。translateとscaleは
+                // 同一transformプロパティ内で合成する必要がある（別々に指定すると後勝ちで消えるため）
+                transform: `translate(${dragOffset.x}px, ${dragOffset.y}px) scale(0.6)`,
+                opacity: 0.85,
                 touchAction: "pan-y",
                 // 自分自身がelementFromPointに引っかかると下のドロップ先が判定できないため、ドラッグ中は自分をヒットテスト対象から外す
                 // （pointerはsetPointerCaptureで捕捉済みのため、pointerEvents:noneでもmove/upは自分に届く）
@@ -332,16 +381,8 @@ function SwipeableCard({
         }}
         onPointerUp={(e) => {
           const isLink = (e.target as HTMLElement).closest("a") !== null;
-          if (dragModeRef.current && dragPayload) {
-            const resolved = resolveDropTarget(dropTargetRef.current);
-            if (resolved !== "none") {
-              const isSelf = dragPayload.kind === "folder" && resolved === dragPayload.id;
-              const isSameLocation = resolved === (currentLocationId ?? null);
-              if (!isSelf && !isSameLocation) {
-                if (dragPayload.kind === "note") onMoveNote?.(dragPayload.id, resolved);
-                else onMoveFolder?.(dragPayload.id, resolved);
-              }
-            }
+          if (dragModeRef.current) {
+            resolveDragMove();
           } else if (dragging.current && dxRef.current < -120) {
             onDelete();
           } else if (!dragging.current && start.current && !isLink) {

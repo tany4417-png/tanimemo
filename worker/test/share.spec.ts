@@ -12,7 +12,7 @@ async function pull() {
 }
 
 describe("/api/share", () => {
-  it("テキストが受信タグ付きメモになる", async () => {
+  it("テキストが無印のメモになる（受信タグは付けない）", async () => {
     const form = new FormData();
     form.append("text", "https://example.com/article");
     const res = await SELF.fetch("https://example.com/api/share", { method: "POST", headers: TOKEN, body: form });
@@ -20,7 +20,7 @@ describe("/api/share", () => {
     const data = await pull();
     expect(data.notes).toHaveLength(1);
     expect(data.notes[0].body).toBe("https://example.com/article");
-    expect(data.notes[0].tags).toEqual(["受信"]);
+    expect(data.notes[0].tags).toEqual([]);
   });
 
   it("画像ファイルが添付付きメモになる", async () => {

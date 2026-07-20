@@ -8,15 +8,30 @@ async function isPurged(db: D1Database, id: string): Promise<boolean> {
 
 export async function upsertNote(db: D1Database, n: NoteRecord): Promise<boolean> {
   if (await isPurged(db, n.id)) return false;
-  await db.prepare(
-    `INSERT INTO notes (id, body, tags, importance, created_at, updated_at, deleted, received_at, folder_id)
-     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
-     ON CONFLICT(id) DO UPDATE SET
-       body = excluded.body, tags = excluded.tags, importance = excluded.importance,
-       updated_at = excluded.updated_at, deleted = excluded.deleted, received_at = excluded.received_at,
-       folder_id = excluded.folder_id
-     WHERE excluded.updated_at > notes.updated_at`
-  ).bind(n.id, n.body, JSON.stringify(n.tags), n.importance, n.createdAt, n.updatedAt, n.deleted, Date.now(), n.folderId ?? null).run();
+  // 旧クライアント対策: pushされたオブジェクトにfolderIdフィールド自体が無い場合は、
+  // 「ルートへ明示的に移動した(null)」と区別してfolder_idを現状維持する（INSERT時のみNULL、
+  // 既存行へのUPDATEではfolder_idをSET句に含めない）
+  const hasFolderId = "folderId" in n;
+  if (hasFolderId) {
+    await db.prepare(
+      `INSERT INTO notes (id, body, tags, importance, created_at, updated_at, deleted, received_at, folder_id)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+       ON CONFLICT(id) DO UPDATE SET
+         body = excluded.body, tags = excluded.tags, importance = excluded.importance,
+         updated_at = excluded.updated_at, deleted = excluded.deleted, received_at = excluded.received_at,
+         folder_id = excluded.folder_id
+       WHERE excluded.updated_at > notes.updated_at`
+    ).bind(n.id, n.body, JSON.stringify(n.tags), n.importance, n.createdAt, n.updatedAt, n.deleted, Date.now(), n.folderId ?? null).run();
+  } else {
+    await db.prepare(
+      `INSERT INTO notes (id, body, tags, importance, created_at, updated_at, deleted, received_at, folder_id)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, NULL)
+       ON CONFLICT(id) DO UPDATE SET
+         body = excluded.body, tags = excluded.tags, importance = excluded.importance,
+         updated_at = excluded.updated_at, deleted = excluded.deleted, received_at = excluded.received_at
+       WHERE excluded.updated_at > notes.updated_at`
+    ).bind(n.id, n.body, JSON.stringify(n.tags), n.importance, n.createdAt, n.updatedAt, n.deleted, Date.now()).run();
+  }
   return true;
 }
 

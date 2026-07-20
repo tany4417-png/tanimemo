@@ -3,7 +3,7 @@
   --card: #FFFFFF;       /* カード面 */
   --rule: #E3DCCB;       /* 罫線・ボーダー */
   --ink: #2A2722;        /* 本文 */
-  --ink-soft: #8A8272;   /* 補助テキスト */
+  --ink-soft: #7A7262;   /* 補助テキスト（コントラスト改善） */
   --indigo: #2B5F8A;     /* アクセント: リンク・主ボタン・選択・フォーカス */
   --vermilion: #B03A2E;  /* 削除・破棄のみ */
   --star: #C9920A;       /* 星 */
@@ -37,12 +37,14 @@ input, select, textarea {
   border: 1px solid var(--rule); border-radius: 8px; padding: 8px; background: var(--card); color: var(--ink);
 }
 button {
-  border: 1px solid var(--rule); border-radius: 8px; padding: 8px 16px; min-height: 44px;
+  border: 1px solid var(--rule); border-radius: 8px; padding: 6px 12px; min-height: 36px; font-size: 13.5px;
   background: var(--card); color: var(--ink); cursor: pointer;
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
 }
 button.primary { background: var(--indigo); border-color: var(--indigo); color: #fff; }
 button.danger { color: var(--vermilion); }
+/* アイコンのみのボタン（戻るボタンなど）は正方形36×36に固定する */
+button.icon-btn { width: 36px; height: 36px; padding: 0; }
 :focus-visible { outline: 2px solid var(--indigo); outline-offset: 2px; }
 
 .tagbar { display: flex; gap: 6px; flex-wrap: wrap; padding-bottom: 8px; }
@@ -106,7 +108,8 @@ button.danger { color: var(--vermilion); }
 
 .breadcrumb { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; font-size: 13px; padding-bottom: 8px; }
 .crumb {
-  cursor: pointer; padding: 3px 10px; border: 1px solid var(--rule);
+  /* タップ・ドロップしやすいよう縦paddingを広げ、高さ32px程度を確保する */
+  cursor: pointer; padding: 5px 10px; border: 1px solid var(--rule);
   border-top-left-radius: 8px; border-top-right-radius: 8px;
   background: var(--card); color: var(--ink-soft);
 }
@@ -132,7 +135,9 @@ button.danger { color: var(--vermilion); }
 .folder-picker-item:hover { background: var(--paper); }
 .folder-picker-item.disabled { color: var(--ink-soft); cursor: default; background: var(--paper); pointer-events: none; }
 
-.card.dragging { box-shadow: var(--shadow-lift); opacity: 0.9; z-index: 20; position: relative; }
+.card.dragging { box-shadow: var(--shadow-lift); z-index: 20; position: relative; }
+/* ドラッグ中は縮小したカードの下に赤い削除背景が透けて見えてしまうため隠す */
+.swipe-wrap:has(.dragging) .swipe-bg { opacity: 0; }
 [data-drop-folder].drop-active { outline: 2px solid var(--indigo); outline-offset: -2px; border-radius: 8px; background: #F2F4F0; }
 
 /* 画面切替（list/note/settings/trash）: フェード＋上方向スライド */

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { db, resetDbForTests } from "./db";
+import { createFolder } from "./folders";
 import {
   allTags,
   createNote,
@@ -109,5 +110,22 @@ describe("ゴミ箱", () => {
     expect(await db.attachmentBlobs.get("att-old")).toBeUndefined();
 
     expect(await db.notes.get(recent.id)).toBeDefined();
+  });
+
+  it("purgeExpiredTrashLocalは31日超のフォルダtombstoneも物理削除し、1日前のものは残す", async () => {
+    const now = Date.now();
+    const day = 24 * 60 * 60 * 1000;
+
+    const oldFolder = await createFolder("消えたフォルダ", null);
+    await db.folders.update(oldFolder.id, { deleted: 1, updatedAt: now - 31 * day });
+
+    const recentFolder = await createFolder("最近消えたフォルダ", null);
+    await db.folders.update(recentFolder.id, { deleted: 1, updatedAt: now - 1 * day });
+
+    const purged = await purgeExpiredTrashLocal(now);
+    expect(purged).toBe(1);
+
+    expect(await db.folders.get(oldFolder.id)).toBeUndefined();
+    expect(await db.folders.get(recentFolder.id)).toBeDefined();
   });
 });

@@ -1,5 +1,7 @@
+import { strFromU8, unzipSync } from "fflate";
 import { beforeEach, describe, expect, it } from "vitest";
 import { db, resetDbForTests } from "./db";
+import { createFolder } from "./folders";
 import type { Note } from "./types";
 import { exportZip, localYmd, mimeToExt, noteContent, notePath, slugify } from "./export";
 
@@ -31,11 +33,17 @@ describe("エクスポートの純関数", () => {
     expect(notePath(n())).toBe("2026-07-20-買い物メモ-00AB.md");
   });
 
-  it("noteContentはフロントマター付き", () => {
+  it("noteContentはフロントマター付き（folderPath省略時はfolder行なし）", () => {
     const c = noteContent(n());
     expect(c).toContain('tags: ["家"]');
     expect(c).toContain("importance: 2");
+    expect(c).not.toContain("folder:");
     expect(c.endsWith("買い物メモ\n- [ ] 牛乳\n")).toBe(true);
+  });
+
+  it("noteContentはfolderPathを渡すとfolder行が入る", () => {
+    const c = noteContent(n(), "仕事/2026");
+    expect(c).toContain("folder: 仕事/2026");
   });
 
   it("localYmdはローカル日付をYYYY-MM-DDで返す", () => {
@@ -61,5 +69,29 @@ describe("exportZip", () => {
     const { blob, missingImages } = await exportZip();
     expect(missingImages).toBe(0);
     expect(blob).toBeInstanceOf(Blob);
+  });
+
+  it("フォルダ配下のメモはfolder行にフォルダパスが書き出される", async () => {
+    const root = await createFolder("仕事", null);
+    const child = await createFolder("2026", root.id);
+    await db.notes.put(n({ id: "01FOLDERNOTE00000000000AA", folderId: child.id }));
+
+    const { blob } = await exportZip();
+    const files = unzipSync(new Uint8Array(await blob.arrayBuffer()));
+    const mdKey = Object.keys(files).find((k) => k.endsWith(".md"));
+    expect(mdKey).toBeDefined();
+    const content = strFromU8(files[mdKey!]);
+    expect(content).toContain("folder: 仕事/2026");
+  });
+
+  it("ルート直下のメモはfolder行を書き出さない", async () => {
+    await db.notes.put(n({ id: "01ROOTNOTE0000000000000AA", folderId: null }));
+
+    const { blob } = await exportZip();
+    const files = unzipSync(new Uint8Array(await blob.arrayBuffer()));
+    const mdKey = Object.keys(files).find((k) => k.endsWith(".md"));
+    expect(mdKey).toBeDefined();
+    const content = strFromU8(files[mdKey!]);
+    expect(content).not.toContain("folder:");
   });
 });

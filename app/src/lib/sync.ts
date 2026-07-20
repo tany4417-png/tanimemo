@@ -66,7 +66,7 @@ export async function runSync(token: string, fetchFn: typeof fetch = fetch): Pro
     }
     for (const n of data.notes) {
       const cur = await db.notes.get(n.id);
-      if (!cur || n.updatedAt > cur.updatedAt) await db.notes.put({ ...n, dirty: 0 });
+      if (!cur || n.updatedAt > cur.updatedAt) await db.notes.put({ ...n, folderId: n.folderId ?? null, dirty: 0 });
     }
     for (const a of data.attachments) {
       const cur = await db.attachments.get(a.id);

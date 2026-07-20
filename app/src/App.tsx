@@ -8,7 +8,7 @@ import { TrashScreen } from "./components/TrashScreen";
 import { addImageFromBlob } from "./lib/attachments";
 import { db } from "./lib/db";
 import { exportZip, localYmd } from "./lib/export";
-import { createFolder, deleteFolderKeepingContents, folderPath, listChildFolders, moveFolder, moveNote, renameFolder } from "./lib/folders";
+import { createFolder, deleteFolderKeepingContents, folderPath, listChildFolders, moveFolder, moveNote, renameFolder, repairOrphans } from "./lib/folders";
 import { allTags, createNote, listActiveNotes, purgeExpiredTrashLocal, softDeleteNote, updateNote, type NotePatch } from "./lib/notes";
 import { filterByTags, searchNotes, sortNotes, type SortMode } from "./lib/sort";
 import { runSync } from "./lib/sync";
@@ -57,6 +57,7 @@ export default function App() {
     setStatus("syncing");
     try {
       await runSync(token);
+      await repairOrphans();
       setStatus("idle");
       setLastSync(Date.now());
     } catch {
@@ -78,7 +79,10 @@ export default function App() {
   }, [syncNow]);
 
   useEffect(() => {
-    void purgeExpiredTrashLocal();
+    void (async () => {
+      await purgeExpiredTrashLocal();
+      await repairOrphans();
+    })();
   }, []);
 
   useEffect(() => {
@@ -103,14 +107,14 @@ export default function App() {
       const files = items.filter((i) => i.kind === "file").map((i) => i.getAsFile()).filter((f): f is File => f !== null);
       const images = files.filter((f) => f.type.startsWith("image/"));
       if (images.length > 0) {
-        const n = await createNote("", ["受信"]);
+        const n = await createNote("", []);
         for (const f of images) await addImageFromBlob(n.id, f);
         scheduleSync();
         return;
       }
       const text = e.clipboardData?.getData("text")?.trim() ?? "";
       if (text) {
-        await createNote(text, ["受信"]);
+        await createNote(text, []);
         scheduleSync();
       }
     }

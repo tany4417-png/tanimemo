@@ -13,6 +13,7 @@ import {
   moveFolder,
   moveNote,
   renameFolder,
+  repairOrphans,
 } from "./folders";
 
 beforeEach(async () => {
@@ -196,6 +197,74 @@ describe("listAllFolders", () => {
 
     const all = await listAllFolders();
     expect(all.map((f) => f.id).sort()).toEqual([a.id, b.id].sort());
+  });
+});
+
+describe("repairOrphans", () => {
+  it("存在しないfolderIdを指す孤児メモはルートへ戻りdirtyが立つ", async () => {
+    const n = await createNote("孤児メモ", [], "MISSING_FOLDER");
+    await db.notes.update(n.id, { dirty: 0 });
+
+    const fixed = await repairOrphans();
+
+    expect(fixed).toBe(1);
+    const after = await db.notes.get(n.id);
+    expect(after?.folderId).toBeNull();
+    expect(after?.dirty).toBe(1);
+  });
+
+  it("削除済み(tombstone)フォルダを指す孤児メモもルートへ戻る", async () => {
+    const folder = await createFolder("消えるフォルダ", null);
+    await db.folders.update(folder.id, { deleted: 1 });
+    const n = await createNote("メモ", [], folder.id);
+    await db.notes.update(n.id, { dirty: 0 });
+
+    const fixed = await repairOrphans();
+
+    expect(fixed).toBe(1);
+    expect((await db.notes.get(n.id))?.folderId).toBeNull();
+  });
+
+  it("存在しないparentIdを指す孤児フォルダはルートへ戻りdirtyが立つ", async () => {
+    const f = await createFolder("孤児フォルダ", "MISSING_PARENT");
+    await db.folders.update(f.id, { dirty: 0 });
+
+    const fixed = await repairOrphans();
+
+    expect(fixed).toBe(1);
+    const after = await db.folders.get(f.id);
+    expect(after?.parentId).toBeNull();
+    expect(after?.dirty).toBe(1);
+  });
+
+  it("正常な階層（親子とも生存）は触らない", async () => {
+    const root = await createFolder("root", null);
+    const child = await createFolder("child", root.id);
+    const n = await createNote("メモ", [], child.id);
+    await db.folders.update(root.id, { dirty: 0 });
+    await db.folders.update(child.id, { dirty: 0 });
+    await db.notes.update(n.id, { dirty: 0 });
+
+    const fixed = await repairOrphans();
+
+    expect(fixed).toBe(0);
+    expect((await db.folders.get(child.id))?.parentId).toBe(root.id);
+    expect((await db.folders.get(child.id))?.dirty).toBe(0);
+    expect((await db.notes.get(n.id))?.folderId).toBe(child.id);
+    expect((await db.notes.get(n.id))?.dirty).toBe(0);
+  });
+
+  it("削除済みのメモ・フォルダ自体は救出対象にしない", async () => {
+    const n = await createNote("削除済みメモ", [], "MISSING");
+    await db.notes.update(n.id, { deleted: 1, dirty: 0 });
+    const f = await createFolder("削除済みフォルダ", "MISSING_PARENT");
+    await db.folders.update(f.id, { deleted: 1, dirty: 0 });
+
+    const fixed = await repairOrphans();
+
+    expect(fixed).toBe(0);
+    expect((await db.notes.get(n.id))?.dirty).toBe(0);
+    expect((await db.folders.get(f.id))?.dirty).toBe(0);
   });
 });
 

@@ -44,13 +44,16 @@ export async function restoreNote(id: string): Promise<Note> {
 export async function purgeExpiredTrashLocal(now = Date.now()): Promise<number> {
   const cutoff = now - TRASH_RETENTION_MS;
   const expired = (await db.notes.toArray()).filter((n) => n.deleted === 1 && n.updatedAt < cutoff);
-  if (expired.length === 0) return 0;
+  const expiredFolders = (await db.folders.toArray()).filter((f) => f.deleted === 1 && f.updatedAt < cutoff);
+  if (expired.length === 0 && expiredFolders.length === 0) return 0;
   const ids = new Set(expired.map((n) => n.id));
   const atts = (await db.attachments.toArray()).filter((a) => ids.has(a.noteId));
-  await db.transaction("rw", db.notes, db.attachments, db.attachmentBlobs, async () => {
+  const folderIds = expiredFolders.map((f) => f.id);
+  await db.transaction("rw", db.notes, db.attachments, db.attachmentBlobs, db.folders, async () => {
     await db.notes.bulkDelete([...ids]);
     await db.attachments.bulkDelete(atts.map((a) => a.id));
     await db.attachmentBlobs.bulkDelete(atts.map((a) => a.id));
+    await db.folders.bulkDelete(folderIds);
   });
-  return expired.length;
+  return expired.length + expiredFolders.length;
 }

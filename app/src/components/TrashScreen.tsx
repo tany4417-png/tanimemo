@@ -11,7 +11,7 @@ export function TrashScreen({ onBack, onRestored }: Props) {
   return (
     <div className="trash">
       <div className="toolbar">
-        <button onClick={onBack} aria-label="戻る">
+        <button className="icon-btn" onClick={onBack} aria-label="戻る">
           <BackIcon />
         </button>
         <h2>ゴミ箱</h2>
