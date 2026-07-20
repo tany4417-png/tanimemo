@@ -65,10 +65,13 @@ export function NoteList(p: Props) {
 
 function SwipeableCard({ onDelete, onOpen, children }: { onDelete: () => void; onOpen: () => void; children: React.ReactNode }) {
   const [dx, setDx] = useState(0);
+  // 判定はrefで行う（高速スワイプではstateの反映がpointerupに間に合わないため）
+  const dxRef = useRef(0);
   const start = useRef<{ x: number; y: number } | null>(null);
   const dragging = useRef(false);
 
   function reset() {
+    dxRef.current = 0;
     setDx(0);
     start.current = null;
     dragging.current = false;
@@ -82,20 +85,28 @@ function SwipeableCard({ onDelete, onOpen, children }: { onDelete: () => void; o
         onPointerDown={(e) => {
           start.current = { x: e.clientX, y: e.clientY };
           dragging.current = false;
+          dxRef.current = 0;
         }}
         onPointerMove={(e) => {
           if (!start.current) return;
           const dxNow = e.clientX - start.current.x;
           const dyNow = e.clientY - start.current.y;
-          if (!dragging.current && Math.abs(dxNow) > 12 && Math.abs(dxNow) > Math.abs(dyNow)) {
+          if (!dragging.current && dxNow < -12 && Math.abs(dxNow) > Math.abs(dyNow)) {
             dragging.current = true;
-            (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+            try {
+              (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+            } catch {
+              // 一部環境でcaptureできなくてもスワイプ自体は成立する
+            }
           }
-          if (dragging.current) setDx(Math.min(0, dxNow));
+          if (dragging.current) {
+            dxRef.current = Math.min(0, dxNow);
+            setDx(dxRef.current);
+          }
         }}
         onPointerUp={(e) => {
           const isLink = (e.target as HTMLElement).closest("a") !== null;
-          if (dragging.current && dx < -90) onDelete();
+          if (dragging.current && dxRef.current < -90) onDelete();
           else if (!dragging.current && start.current && !isLink) onOpen();
           reset();
         }}

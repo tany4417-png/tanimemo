@@ -49,7 +49,7 @@ export function NoteScreen({ note, startEditing, onChange, onDelete, onBack }: P
         ) : (
           <button onClick={() => { setDraft(note.body); setEditing(true); }}>編集</button>
         )}
-        <button className="danger" onClick={() => { if (confirm("削除しますか？")) onDelete(); }}>削除</button>
+        <button className="danger" onClick={onDelete}>削除</button>
       </div>
       <input
         key={note.id}

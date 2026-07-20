@@ -67,11 +67,14 @@ describe("/api/sync", () => {
     expect(data.attachments[0].noteId).toBe("01NOTE");
   });
 
-  it("30日を過ぎた削除済みメモは同期時に完全削除される", async () => {
+  it("30日を過ぎた削除済みメモは同期時に完全削除される（本体は消え、削除スタブのみ残る）", async () => {
     const old = Date.now() - 31 * 24 * 60 * 60 * 1000;
-    await sync({ since: 0, notes: [note({ id: "OLD", updatedAt: old, deleted: 1 })], attachments: [] });
+    await sync({ since: 0, notes: [note({ id: "OLD", updatedAt: old, deleted: 1, body: "secret" })], attachments: [] });
     const r = await (await sync({ since: 0, notes: [], attachments: [] })).json() as any;
-    expect(r.notes.find((n: any) => n.id === "OLD")).toBeUndefined();
+    const found = r.notes.filter((n: any) => n.id === "OLD");
+    expect(found).toHaveLength(1);
+    expect(found[0].body).toBe("");
+    expect(found[0].deleted).toBe(1);
   });
 
   it("30日以内の削除済みメモは残る（復元可能）", async () => {
@@ -93,5 +96,23 @@ describe("/api/sync", () => {
     expect(get.status).toBe(404);
     const r = await (await sync({ since: 0, notes: [], attachments: [] })).json() as any;
     expect(r.attachments.find((a: any) => a.id === "PURGEATT")).toBeUndefined();
+  });
+
+  it("purge済みメモは古いsinceのpullに削除スタブとして届く（長期オフライン端末対策）", async () => {
+    const old = Date.now() - 31 * 24 * 60 * 60 * 1000;
+    await sync({ since: 0, notes: [note({ id: "GONE", updatedAt: old, deleted: 1 })], attachments: [] });
+    await sync({ since: 0, notes: [], attachments: [] }); // purge発火
+    const r = await (await sync({ since: 0, notes: [], attachments: [] })).json() as any;
+    const stub = r.notes.find((n: any) => n.id === "GONE");
+    expect(stub?.deleted).toBe(1);
+  });
+
+  it("purge済みidのpushは復活しない", async () => {
+    const old = Date.now() - 31 * 24 * 60 * 60 * 1000;
+    await sync({ since: 0, notes: [note({ id: "ZOMBIE", updatedAt: old, deleted: 1 })], attachments: [] });
+    await sync({ since: 0, notes: [], attachments: [] }); // purge発火
+    await sync({ since: 0, notes: [note({ id: "ZOMBIE", updatedAt: Date.now(), body: "edited-offline", deleted: 0 })], attachments: [] });
+    const r = await (await sync({ since: 0, notes: [], attachments: [] })).json() as any;
+    expect(r.notes.find((n: any) => n.id === "ZOMBIE" && n.deleted === 0)).toBeUndefined();
   });
 });
