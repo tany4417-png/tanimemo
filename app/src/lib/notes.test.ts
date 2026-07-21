@@ -3,11 +3,13 @@ import { db, resetDbForTests } from "./db";
 import { createFolder } from "./folders";
 import {
   createNote,
+  discardIfEmptyNew,
   listActiveNotes,
   listTrashedNotes,
   purgeExpiredTrashLocal,
   restoreNote,
   softDeleteNote,
+  sweepEmptyNewNotes,
   updateNote,
 } from "./notes";
 
@@ -119,5 +121,81 @@ describe("ゴミ箱", () => {
 
     expect(await db.folders.get(oldFolder.id)).toBeUndefined();
     expect(await db.folders.get(recentFolder.id)).toBeDefined();
+  });
+});
+
+describe("空メモの破棄（discardIfEmptyNew）", () => {
+  it("未同期・無更新の空メモは物理削除される", async () => {
+    const n = await createNote("");
+    expect(await discardIfEmptyNew(n.id)).toBe("deleted");
+    expect(await db.notes.get(n.id)).toBeUndefined();
+  });
+
+  it("本文が空白のみでも空とみなして物理削除する", async () => {
+    const n = await createNote("  \n ");
+    expect(await discardIfEmptyNew(n.id)).toBe("deleted");
+  });
+
+  it("本文があるメモは残る", async () => {
+    const n = await createNote("メモ");
+    expect(await discardIfEmptyNew(n.id)).toBe("kept");
+    expect(await db.notes.get(n.id)).toBeDefined();
+  });
+
+  it("有効な添付があるメモは残る", async () => {
+    const n = await createNote("");
+    await db.attachments.put({
+      id: "A1", noteId: n.id, mime: "image/png", size: 1, createdAt: 1, updatedAt: 1, deleted: 0, dirty: 1,
+    });
+    expect(await discardIfEmptyNew(n.id)).toBe("kept");
+  });
+
+  it("削除済み添付しか無ければ空とみなす", async () => {
+    const n = await createNote("");
+    await db.attachments.put({
+      id: "A2", noteId: n.id, mime: "image/png", size: 1, createdAt: 1, updatedAt: 1, deleted: 1, dirty: 1,
+    });
+    expect(await discardIfEmptyNew(n.id)).toBe("deleted");
+  });
+
+  it("同期済み(dirty=0)の空メモは物理削除せずゴミ箱行き", async () => {
+    const n = await createNote("");
+    await db.notes.update(n.id, { dirty: 0 });
+    expect(await discardIfEmptyNew(n.id)).toBe("trashed");
+    expect((await db.notes.get(n.id))?.deleted).toBe(1);
+  });
+
+  it("空のまま保存してupdatedAtが進んだメモはゴミ箱行き", async () => {
+    const n = await createNote("");
+    // createNoteと同一msだとcreatedAt===updatedAtになり判定が変わるため確実にずらす
+    await new Promise((r) => setTimeout(r, 10));
+    await updateNote(n.id, { body: "" });
+    expect(await discardIfEmptyNew(n.id)).toBe("trashed");
+  });
+
+  it("存在しないid・削除済みメモはkept（何もしない）", async () => {
+    expect(await discardIfEmptyNew("MISSING")).toBe("kept");
+    const n = await createNote("");
+    await softDeleteNote(n.id);
+    expect(await discardIfEmptyNew(n.id)).toBe("kept");
+  });
+});
+
+describe("起動時の空メモ掃除（sweepEmptyNewNotes）", () => {
+  it("未同期・無更新・空のメモだけが消える", async () => {
+    const target = await createNote("");
+    const withBody = await createNote("本文あり");
+    const synced = await createNote("");
+    await db.notes.update(synced.id, { dirty: 0 });
+    const withAtt = await createNote("");
+    await db.attachments.put({
+      id: "A3", noteId: withAtt.id, mime: "image/png", size: 1, createdAt: 1, updatedAt: 1, deleted: 0, dirty: 1,
+    });
+
+    expect(await sweepEmptyNewNotes()).toBe(1);
+    expect(await db.notes.get(target.id)).toBeUndefined();
+    expect(await db.notes.get(withBody.id)).toBeDefined();
+    expect(await db.notes.get(synced.id)).toBeDefined();
+    expect(await db.notes.get(withAtt.id)).toBeDefined();
   });
 });

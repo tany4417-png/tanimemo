@@ -54,3 +54,43 @@ export async function purgeExpiredTrashLocal(now = Date.now()): Promise<number> 
   });
   return expired.length + expiredFolders.length;
 }
+
+// 空メモ判定: 本文が空白のみ、かつ有効な添付（deleted=0）が1件も無い。星（importance）は判定に含めない
+// （星だけ付けた本文なしメモも空として扱う・設計書参照）
+async function hasNoContent(n: Note): Promise<boolean> {
+  if (n.body.trim() !== "") return false;
+  const atts = await db.attachments.where("noteId").equals(n.id).toArray();
+  return atts.every((a) => a.deleted === 1);
+}
+
+// 新規作成から何も入力せず戻ったときの後始末。未同期(dirty=1)かつ無更新(createdAt===updatedAt)なら
+// この端末しか知らない個体なので物理削除する。それ以外（編集画面の表示中に同期が走った・空のまま保存した等）は
+// サーバーが既に知っている可能性があり、ローカル物理削除だと次のpull（特にfull resync）で復活するため
+// ゴミ箱行きにする（tombstoneとして同期され、30日の期限purgeで両側から消える）
+export async function discardIfEmptyNew(id: string): Promise<"deleted" | "trashed" | "kept"> {
+  const n = await db.notes.get(id);
+  if (!n || n.deleted === 1) return "kept";
+  if (!(await hasNoContent(n))) return "kept";
+  if (n.dirty === 1 && n.createdAt === n.updatedAt) {
+    await db.notes.delete(id);
+    return "deleted";
+  }
+  await softDeleteNote(id);
+  return "trashed";
+}
+
+// 起動時の保険: アプリ強制終了・タブ閉じで「戻る」を通らず残った新規のままの空メモを物理削除する。
+// 物理削除してよい条件はdiscardIfEmptyNewの物理削除側と同じ（未削除・未同期・無更新・空）
+export async function sweepEmptyNewNotes(): Promise<number> {
+  const candidates = (await db.notes.toArray()).filter(
+    (n) => n.deleted === 0 && n.dirty === 1 && n.createdAt === n.updatedAt
+  );
+  let removed = 0;
+  for (const n of candidates) {
+    if (await hasNoContent(n)) {
+      await db.notes.delete(n.id);
+      removed += 1;
+    }
+  }
+  return removed;
+}
