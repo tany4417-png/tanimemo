@@ -146,8 +146,9 @@ button.icon-btn { width: 36px; height: 36px; padding: 0; background: var(--card)
 .card-thumb { width: 48px; height: 48px; object-fit: cover; border-radius: 6px; border: 1px solid var(--rule); }
 .empty { color: var(--ink-soft); text-align: center; padding: 40px 0; }
 
-/* ヘッダー以外（タグ入力・本文・ギャラリー）が.screen-body側。editorのflex:1が効くよう縦flexにしておく */
-.note .screen-body { display: flex; flex-direction: column; min-height: 0; }
+/* ヘッダー以外（タグ入力・本文・ギャラリー）が.screen-body側。editorのflex:1が効くよう縦flexにしておく
+   （bounce-area側に持たせる。screen-body自体はスクローラのままにしておく） */
+.note .bounce-area { display: flex; flex-direction: column; min-height: 0; }
 /* メモ画面のツールバーは指の当てやすさを優先して拡大する（一覧側は現状維持）。
    .starだけは既存の見た目（星グリフのfont-size 1.2rem・padding 4px）を保つため対象から外す。
    折返し（flex-wrap）だと画面幅でボタン位置が変わってしまうため、常に2段固定のレイアウトにする
@@ -182,8 +183,13 @@ button.icon-btn { width: 36px; height: 36px; padding: 0; background: var(--card)
 
 .settings { max-width: 420px; }
 /* ヘッダー以外（トークン欄・エクスポート・ゴミ箱・バージョン表示など）が.screen-body側。
-   元の縦積み+gapの見た目を保つため、ここに移す */
-.settings .screen-body { display: flex; flex-direction: column; gap: 10px; }
+   元の縦積み+gapの見た目を保つため、bounce-area側に移す */
+.settings .bounce-area { display: flex; flex-direction: column; gap: 10px; }
+/* .screen-body直下の中身全体を1枚でラップする箱。常に「コンテナ＋1px」の高さにすることで、
+   iOSのラバーバンド（スクロール余地のないスクローラはバウンドしない仕様）を内容が短いときも発生させる。
+   .note/.settingsの上書きルールより後ろに置く＝同じ詳細度(2クラス)のためソース順で決着し、
+   .note .bounce-areaのmin-height:0をここのcalc(100% + 1px)が上書きしてラバーバンドを成立させる */
+.screen-body > .bounce-area { min-height: calc(100% + 1px); }
 .gallery { display: flex; gap: 8px; flex-wrap: wrap; padding: 10px 0; }
 .thumb { width: 96px; height: 96px; object-fit: cover; border-radius: 8px; border: 1px solid var(--rule); cursor: pointer; }
 .overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.85); display: flex; align-items: center; justify-content: center; z-index: 10; }

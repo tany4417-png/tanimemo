@@ -229,26 +229,29 @@ export function NoteScreen({ syncBar, slideClass, note, startEditing, onChange, 
       )}
       {/* ヘッダー（・移動ピッカー）以外＝タグ入力・本文・ギャラリーだけがスクロール＆バウンドする */}
       <div className="screen-body">
-        <input
-          key={note.id}
-          className="tags-input"
-          placeholder="タグ（カンマ区切り）"
-          defaultValue={note.tags.join(", ")}
-          onBlur={(e) => onChange({ tags: e.target.value.split(",").map((s) => s.trim()).filter(Boolean) })}
-        />
-        {editing ? (
-          <textarea
-            ref={textareaRef}
-            className="editor"
-            autoFocus
-            value={draft}
-            onChange={onDraftChange}
-            onPaste={onEditorPaste}
+        {/* 内容が短くてもラバーバンドさせるため、中身全体を.bounce-areaで1枚ラップする（常にコンテナ＋1pxの高さ） */}
+        <div className="bounce-area">
+          <input
+            key={note.id}
+            className="tags-input"
+            placeholder="タグ（カンマ区切り）"
+            defaultValue={note.tags.join(", ")}
+            onBlur={(e) => onChange({ tags: e.target.value.split(",").map((s) => s.trim()).filter(Boolean) })}
           />
-        ) : (
-          <div className="note-view" onClick={clickView} dangerouslySetInnerHTML={{ __html: html }} />
-        )}
-        <Gallery noteId={note.id} />
+          {editing ? (
+            <textarea
+              ref={textareaRef}
+              className="editor"
+              autoFocus
+              value={draft}
+              onChange={onDraftChange}
+              onPaste={onEditorPaste}
+            />
+          ) : (
+            <div className="note-view" onClick={clickView} dangerouslySetInnerHTML={{ __html: html }} />
+          )}
+          <Gallery noteId={note.id} />
+        </div>
       </div>
     </div>
   );

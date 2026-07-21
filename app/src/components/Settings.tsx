@@ -37,23 +37,26 @@ export function Settings({ syncBar, slideClass, token, onSave, onBack, onExport,
         </div>
       </div>
       <div className="screen-body">
-        <label htmlFor="token">APIトークン</label>
-        <input id="token" type="password" value={value} onChange={(e) => setValue(e.target.value)} />
-        <button className="primary" onClick={() => onSave(value.trim())}>保存</button>
-        <hr />
-        <button className="tint acc-teal" onClick={onExport}>
-          <ExportIcon size={18} />
-          全メモをエクスポート（zip）
-        </button>
-        <button onClick={onTrash}>
-          <TrashIcon size={18} />
-          ゴミ箱
-        </button>
-        <hr />
-        <p>バージョン: {__APP_VERSION__}</p>
-        <button className="tint acc-blue" onClick={() => void updateApp()}>
-          アプリを更新
-        </button>
+        {/* 内容が短くてもラバーバンドさせるため、中身全体を.bounce-areaで1枚ラップする（常にコンテナ＋1pxの高さ） */}
+        <div className="bounce-area">
+          <label htmlFor="token">APIトークン</label>
+          <input id="token" type="password" value={value} onChange={(e) => setValue(e.target.value)} />
+          <button className="primary" onClick={() => onSave(value.trim())}>保存</button>
+          <hr />
+          <button className="tint acc-teal" onClick={onExport}>
+            <ExportIcon size={18} />
+            全メモをエクスポート（zip）
+          </button>
+          <button onClick={onTrash}>
+            <TrashIcon size={18} />
+            ゴミ箱
+          </button>
+          <hr />
+          <p>バージョン: {__APP_VERSION__}</p>
+          <button className="tint acc-blue" onClick={() => void updateApp()}>
+            アプリを更新
+          </button>
+        </div>
       </div>
     </div>
   );
