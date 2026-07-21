@@ -114,29 +114,43 @@ export function flattenFolderTree(
   return result;
 }
 
-// 整合スイープ: 生きているフォルダ(deleted=0)の外を指す孤児メモ・孤児フォルダをルートへ救出する。
-// 通信障害中の並行操作や複数端末のずれた同期タイミングでの取りこぼし対策。戻り値は修正件数
-export async function repairOrphans(): Promise<number> {
+// 生きているフォルダ(deleted=0)の外を指す孤児メモ・孤児フォルダを洗い出す（読み取りのみ・副作用なし）。
+// repairOrphans/countOrphansの共通下請け
+async function findOrphans(): Promise<{ orphanNotes: Note[]; orphanFolders: Folder[] }> {
   const aliveFolderIds = new Set((await db.folders.toArray()).filter((f) => f.deleted === 0).map((f) => f.id));
-  let fixed = 0;
-
   const orphanNotes = (await db.notes.toArray()).filter(
     (n) => n.deleted === 0 && n.folderId !== null && !aliveFolderIds.has(n.folderId)
   );
+  const orphanFolders = (await db.folders.toArray()).filter(
+    (f) => f.deleted === 0 && f.parentId !== null && !aliveFolderIds.has(f.parentId)
+  );
+  return { orphanNotes, orphanFolders };
+}
+
+// 整合スイープ: 生きているフォルダ(deleted=0)の外を指す孤児メモ・孤児フォルダをルートへ救出する。
+// 通信障害中の並行操作や複数端末のずれた同期タイミングでの取りこぼし対策。戻り値は修正件数
+export async function repairOrphans(): Promise<number> {
+  const { orphanNotes, orphanFolders } = await findOrphans();
+  let fixed = 0;
+
   for (const n of orphanNotes) {
     await updateNote(n.id, { folderId: null });
     fixed += 1;
   }
 
-  const orphanFolders = (await db.folders.toArray()).filter(
-    (f) => f.deleted === 0 && f.parentId !== null && !aliveFolderIds.has(f.parentId)
-  );
   for (const f of orphanFolders) {
     await updateFolder(f.id, { parentId: null });
     fixed += 1;
   }
 
   return fixed;
+}
+
+// repairOrphansと同じ判定で孤児メモ・孤児フォルダの件数だけを数える（修復しない）。
+// 更新後の一回全量同期（sync.tsのfullResyncV2）を試す価値があるか判断するために使う
+export async function countOrphans(): Promise<number> {
+  const { orphanNotes, orphanFolders } = await findOrphans();
+  return orphanNotes.length + orphanFolders.length;
 }
 
 // idとその子孫（再帰）のidをすべて集めて返す（idそのものを含む）

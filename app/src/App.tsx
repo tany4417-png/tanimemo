@@ -10,6 +10,7 @@ import { addImageFromBlob } from "./lib/attachments";
 import { db } from "./lib/db";
 import { exportZip, localYmd } from "./lib/export";
 import {
+  countOrphans,
   createFolder,
   deleteFolderWithContents,
   folderPath,
@@ -68,8 +69,32 @@ export default function App() {
   const followingBack = useRef(false);
   // 追従スワイプ中に直接styleを書き換える対象（pointerdown時点でマウントされている.screen要素）
   const dragScreenEl = useRef<HTMLElement | null>(null);
+  // followingBack.current（ref）と同じ値を保つstate。document側のpointerup/pointercancelフォールバック
+  // リスナー（下のuseEffect）の張り外しだけに使う。ホットパス（pointermoveのたび）では更新しないため、
+  // 追従中の高頻度な再レンダーは起きない
+  const [isFollowingBack, setIsFollowingBack] = useState(false);
+  // 追従開始から一定時間pointermoveが来なければ「取り逃し」とみなして強制リセットするウォッチドッグ
+  const backSwipeWatchdog = useRef<number | undefined>(undefined);
   // グローバルundo/redo（削除・移動・並べ替え・内容変更の操作履歴）。メモリ内のみ＝リロードで消える
   const [stacks, setStacks] = useState<ActionStacks>({ past: [], future: [] });
+
+  // 追従スワイプ状態の後始末を1箇所に集約する（未達での指離し・縦スクロールへの移行・pointercancel・
+  // documentフォールバック・visibilitychange/blur・ウォッチドッグタイマー、すべての経路からここを呼ぶ）。
+  // pointerupを取り逃してtransformが途中で止まったまま・touchmoveのpreventDefaultが効き続けたまま
+  // 操作不能になる事態への防御。追従中だった場合のみ.screenをtranslateX(0)へ150ms transitionで戻す
+  const resetBackSwipe = useCallback(() => {
+    window.clearTimeout(backSwipeWatchdog.current);
+    backSwipeWatchdog.current = undefined;
+    const el = dragScreenEl.current;
+    if (el && followingBack.current) {
+      el.style.transition = "transform 150ms ease";
+      el.style.transform = "translateX(0px)";
+    }
+    backSwipeStart.current = null;
+    followingBack.current = false;
+    setIsFollowingBack(false);
+    dragScreenEl.current = null;
+  }, []);
 
   const notes = useLiveQuery(listActiveNotes, [], []);
   const pending = useLiveQuery(
@@ -91,13 +116,30 @@ export default function App() {
   );
   const current = view.name === "note" ? notes.find((n) => n.id === view.id) : undefined;
 
+  // 孤児（存在しないフォルダ/親を指すメモ・フォルダ）の安全な救済。旧バージョンのクライアントが
+  // folders配列を無視したままlastSyncだけ進めてしまうと、新バージョンが受け取るはずのフォルダ実体が
+  // 永遠に届かず、本来は孤児ではないものまで「孤児検出→即ルートへ書き戻す」と誤修復してしまう。
+  // そこで、孤児が1件でも見つかったらまず全量同期（runSync .. {full:true}）を試み、
+  // それでも残った分だけ修復する。トークン未設定（オフライン単独端末）では誤修復を避けるため何もしない
+  const repairOrphansSafely = useCallback(async () => {
+    if (!token) return;
+    const orphanCount = await countOrphans();
+    if (orphanCount === 0) return;
+    try {
+      await runSync(token, fetch, { full: true });
+    } catch {
+      // 全量同期に失敗しても、既知の孤児は従来どおり救済しておく
+    }
+    await repairOrphans();
+  }, [token]);
+
   const syncNow = useCallback(async () => {
     if (!token || syncing.current) return;
     syncing.current = true;
     setStatus("syncing");
     try {
       await runSync(token);
-      await repairOrphans();
+      await repairOrphansSafely();
       setStatus("idle");
       setLastSync(Date.now());
     } catch {
@@ -105,7 +147,7 @@ export default function App() {
     } finally {
       syncing.current = false;
     }
-  }, [token]);
+  }, [token, repairOrphansSafely]);
 
   const scheduleSync = useCallback(() => {
     window.clearTimeout(timer.current);
@@ -158,22 +200,29 @@ export default function App() {
   useEffect(() => {
     void (async () => {
       await purgeExpiredTrashLocal();
-      await repairOrphans();
+      await repairOrphansSafely();
     })();
   }, []);
 
   useEffect(() => {
     const onOnline = () => void syncNow();
+    // タブが非表示になった瞬間はpointerup/pointercancelが届かないまま追従状態が残ることがある
+    // （アプリ切替・スリープ等）。可視状態に戻ってから固まって見えないよう、hidden時に強制リセットする
     const onVisible = () => {
       if (document.visibilityState === "visible") void syncNow();
+      else resetBackSwipe();
     };
+    // window blur（他アプリへのフォーカス移動等）でも同様に追従状態を強制リセットする
+    const onBlur = () => resetBackSwipe();
     window.addEventListener("online", onOnline);
     document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("blur", onBlur);
     return () => {
       window.removeEventListener("online", onOnline);
       document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("blur", onBlur);
     };
-  }, [syncNow]);
+  }, [syncNow, resetBackSwipe]);
 
   useEffect(() => {
     async function onPaste(e: ClipboardEvent) {
@@ -248,14 +297,6 @@ export default function App() {
   // 戻り先が無い場面（一覧ルート）かどうか。navigateBackの分岐と対応させておき、falseなら追従自体を始めない
   const canGoBack = view.name !== "list" || currentFolderId !== null;
 
-  // 追従中の.screenをtranslateX(0)へ150ms transitionで戻す（未達での指離し・縦スクロールへの移行で共通に使う）
-  function snapBackScreen() {
-    const el = dragScreenEl.current;
-    if (!el) return;
-    el.style.transition = "transform 150ms ease";
-    el.style.transform = "translateX(0px)";
-  }
-
   // 背景の右フリック検出（iOS風の戻るジェスチャー）。カード・ボタン等の操作要素上のpointerdownは
   // closestで除外し、既存のスワイプ・D&D・タップ操作と干渉しないようにする。戻り先が無い場面でも始めない
   const onMainPointerDown = useCallback(
@@ -283,6 +324,7 @@ export default function App() {
     if (!followingBack.current) {
       if (!(dx > 10 && Math.abs(dx) > Math.abs(dy))) return;
       followingBack.current = true;
+      setIsFollowingBack(true);
       dragScreenEl.current = mainRef.current?.querySelector<HTMLElement>(".screen") ?? null;
       const el = dragScreenEl.current;
       if (el) el.style.transition = "none";
@@ -294,43 +336,40 @@ export default function App() {
     }
 
     if (Math.abs(dy) > Math.abs(dx)) {
-      snapBackScreen();
-      backSwipeStart.current = null;
-      followingBack.current = false;
-      dragScreenEl.current = null;
+      resetBackSwipe();
       return;
     }
 
+    // pointerupを取り逃した場合の保険（2秒間pointermoveが無ければ強制リセット）。
+    // 動きが続く限り再武装するだけなので、正常に長く追従している最中は発火しない
+    window.clearTimeout(backSwipeWatchdog.current);
+    backSwipeWatchdog.current = window.setTimeout(resetBackSwipe, 2000);
+
     const el = dragScreenEl.current;
     if (el) el.style.transform = `translateX(${Math.max(0, dx)}px)`;
-  }, []);
+  }, [resetBackSwipe]);
 
   const onMainPointerUp = useCallback(
     (e: ReactPointerEvent<HTMLElement>) => {
       const start = backSwipeStart.current;
       const wasFollowing = followingBack.current;
-      backSwipeStart.current = null;
-      followingBack.current = false;
       if (!start || !wasFollowing) {
-        dragScreenEl.current = null;
+        resetBackSwipe();
         return;
       }
       const dx = e.clientX - start.x;
       const vx = dx / Math.max(1, Date.now() - start.t);
-      if (shouldCompleteBack(dx, vx)) navigateBack();
-      else snapBackScreen();
-      dragScreenEl.current = null;
+      const complete = shouldCompleteBack(dx, vx);
+      resetBackSwipe();
+      if (complete) navigateBack();
     },
-    [navigateBack]
+    [navigateBack, resetBackSwipe]
   );
 
   // pointercancel（中断）でも追従中なら0へ戻し、状態を片付ける
   const onMainPointerCancel = useCallback(() => {
-    if (followingBack.current) snapBackScreen();
-    backSwipeStart.current = null;
-    followingBack.current = false;
-    dragScreenEl.current = null;
-  }, []);
+    resetBackSwipe();
+  }, [resetBackSwipe]);
 
   // 追従中（followingBack）は縦スクロールを起こさない。既存のD&D（NoteList側）と同じく、
   // 非passiveのtouchmoveでpreventDefaultする以外に手段が無いため、ここだけネイティブイベントを使う
@@ -343,6 +382,24 @@ export default function App() {
     el.addEventListener("touchmove", onTouchMove, { passive: false });
     return () => el.removeEventListener("touchmove", onTouchMove);
   }, []);
+
+  // 追従スワイプ中にmain要素自身がpointerup/pointercancelを受け取れないことがある（NoteList側のD&D
+  // フォールバックと同じ理由: setPointerCaptureが効かない環境で、指が離れた場所によっては届かない）。
+  // documentにもフォールバックを張り、確実に追従状態を終わらせる。追従開始時（isFollowingBack=true）
+  // に張り、終了時（false・アンマウント）に必ず外す
+  useEffect(() => {
+    if (!isFollowingBack) return;
+    function finish() {
+      if (!followingBack.current) return;
+      resetBackSwipe();
+    }
+    document.addEventListener("pointerup", finish);
+    document.addEventListener("pointercancel", finish);
+    return () => {
+      document.removeEventListener("pointerup", finish);
+      document.removeEventListener("pointercancel", finish);
+    };
+  }, [isFollowingBack, resetBackSwipe]);
 
   const onCreateFolder = useCallback(async () => {
     const name = prompt("新しいフォルダ名");

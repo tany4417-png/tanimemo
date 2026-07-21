@@ -3,6 +3,7 @@ import { db, resetDbForTests } from "./db";
 import { createNote } from "./notes";
 import type { Folder } from "./types";
 import {
+  countOrphans,
   createFolder,
   deleteFolderWithContents,
   flattenFolderTree,
@@ -420,6 +421,36 @@ describe("repairOrphans", () => {
     expect(fixed).toBe(0);
     expect((await db.notes.get(n.id))?.dirty).toBe(0);
     expect((await db.folders.get(f.id))?.dirty).toBe(0);
+  });
+});
+
+describe("countOrphans", () => {
+  it("孤児メモ・孤児フォルダの合計件数を返す（修復はしない）", async () => {
+    const n = await createNote("孤児メモ", [], "MISSING_FOLDER");
+    const f = await createFolder("孤児フォルダ", "MISSING_PARENT");
+
+    const count = await countOrphans();
+
+    expect(count).toBe(2);
+    // 数えるだけで修復はされていないことを確認
+    expect((await db.notes.get(n.id))?.folderId).toBe("MISSING_FOLDER");
+    expect((await db.folders.get(f.id))?.parentId).toBe("MISSING_PARENT");
+  });
+
+  it("孤児が無ければ0を返す", async () => {
+    const root = await createFolder("root", null);
+    await createNote("メモ", [], root.id);
+
+    expect(await countOrphans()).toBe(0);
+  });
+
+  it("削除済み(tombstone)のメモ・フォルダ自体はカウント対象にしない", async () => {
+    const n = await createNote("削除済みメモ", [], "MISSING");
+    await db.notes.update(n.id, { deleted: 1 });
+    const f = await createFolder("削除済みフォルダ", "MISSING_PARENT");
+    await db.folders.update(f.id, { deleted: 1 });
+
+    expect(await countOrphans()).toBe(0);
   });
 });
 

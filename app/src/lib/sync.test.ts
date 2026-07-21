@@ -115,6 +115,41 @@ describe("runSync", () => {
   });
 });
 
+describe("runSync 全量再同期（fullResyncV2）", () => {
+  it("旧バージョンからの更新直後（fullResyncV2フラグが無い）はsince=0で送り、成功後にフラグが立つ", async () => {
+    const { f, calls } = okFetch();
+    await runSync("tok", f);
+    const body = JSON.parse(String(calls[0].init.body));
+    expect(body.since).toBe(0);
+    expect((await db.meta.get("fullResyncV2"))?.value).toBeTruthy();
+  });
+
+  it("2回目以降の通常呼び出しはフラグが立っているためlastSyncをsinceに使う", async () => {
+    const { f: f1 } = okFetch({ now: 500 });
+    await runSync("tok", f1); // 1回目でフラグが立ち、lastSyncが500になる
+
+    const { f: f2, calls } = okFetch({ now: 999 });
+    await runSync("tok", f2); // 2回目は通常同期
+    const body = JSON.parse(String(calls[0].init.body));
+    expect(body.since).toBe(500);
+  });
+
+  it("options.full=trueを渡すと、フラグの有無やlastSyncの値に関わらずsince=0で送る", async () => {
+    await db.meta.put({ key: "fullResyncV2", value: 1 });
+    await db.meta.put({ key: "lastSync", value: 12345 });
+    const { f, calls } = okFetch();
+    await runSync("tok", f, { full: true });
+    const body = JSON.parse(String(calls[0].init.body));
+    expect(body.since).toBe(0);
+  });
+
+  it("full:trueでの同期成功後もlastSyncは応答のnowに更新される", async () => {
+    const { f } = okFetch({ now: 777 });
+    await runSync("tok", f, { full: true });
+    expect((await db.meta.get("lastSync"))?.value).toBe(777);
+  });
+});
+
 describe("runSync フォルダ", () => {
   it("dirtyなフォルダだけを送り、dirtyフィールドは含めない", async () => {
     const a = await createFolder("a", null);

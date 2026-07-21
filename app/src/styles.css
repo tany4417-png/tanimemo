@@ -150,8 +150,12 @@ button.icon-btn { width: 36px; height: 36px; padding: 0; background: var(--card)
 .note .screen-body { display: flex; flex-direction: column; min-height: 0; }
 /* メモ画面のツールバーは指の当てやすさを優先して拡大する（一覧側は現状維持）。
    .starだけは既存の見た目（星グリフのfont-size 1.2rem・padding 4px）を保つため対象から外す。
-   ボタンが多い新規メモでも削除ボタンが画面外に出ないよう折り返す（折返し時の行間gapも10pxのまま） */
-.note .toolbar { gap: 10px; flex-wrap: wrap; }
+   折返し（flex-wrap）だと画面幅でボタン位置が変わってしまうため、常に2段固定のレイアウトにする
+   （1段目: 戻る・★★★・スペーサー・保存/編集・削除／2段目: undo・redo・写真・移動…）。
+   .toolbar自体は縦積みの箱にし、各段（.note-toolbar-row）が横並びのflexコンテナになる */
+.note .toolbar { flex-direction: column; align-items: stretch; gap: 8px; }
+.note-toolbar-row { display: flex; align-items: center; gap: 10px; }
+.note-toolbar-row .spacer { flex: 1; }
 .note .toolbar button:not(.star) { min-height: 44px; padding: 10px 14px; font-size: 14px; }
 .note .toolbar button.icon-btn { width: 44px; height: 44px; padding: 0; }
 .stars { display: flex; }
