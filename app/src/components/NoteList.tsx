@@ -32,9 +32,17 @@ type Props = {
   onDelete: (id: string) => void;
   // 検索・タグ絞り込み中はフォルダ横断表示になるモード。App側の判定を一本化して受け取る
   isBrowsingFolder: boolean;
+  currentFolderId: string | null;
+  // 画面遷移のスライド方向（App.tsxのnavDirection）。フォルダ間移動時のコンテンツ部アニメに使う
+  navDirection: "forward" | "back";
   folderPath: Folder[];
   childFolders: Folder[];
+  // フォルダカードで下の階層へ入る（進み操作）
   onOpenFolder: (id: string | null) => void;
+  // パンくずで上位の階層（祖先）へ戻る（戻り操作）
+  onNavigateUp: (id: string | null) => void;
+  // ツールバーの「親フォルダへ戻る」ボタン。navigateBack（App.tsx）をそのまま渡す
+  onBack: () => void;
   onCreateFolder: () => void;
   onRenameCurrentFolder: () => void;
   onDeleteFolder: (id: string) => void;
@@ -68,11 +76,7 @@ export function NoteList(p: Props) {
         {p.syncBar}
         <div className="toolbar">
           {isBrowsingFolder && p.folderPath.length > 0 && (
-            <button
-              className="icon-btn"
-              aria-label="親フォルダへ戻る"
-              onClick={() => p.onOpenFolder(p.folderPath.length >= 2 ? p.folderPath[p.folderPath.length - 2].id : null)}
-            >
+            <button className="icon-btn" aria-label="親フォルダへ戻る" onClick={p.onBack}>
               <BackIcon />
             </button>
           )}
@@ -89,7 +93,7 @@ export function NoteList(p: Props) {
           <button className="primary" onClick={p.onCreate}>新規</button>
         </div>
         {isBrowsingFolder && (
-          <Breadcrumb path={p.folderPath} onNavigate={p.onOpenFolder} onRenameCurrent={p.onRenameCurrentFolder} />
+          <Breadcrumb path={p.folderPath} onNavigate={p.onNavigateUp} onRenameCurrent={p.onRenameCurrentFolder} />
         )}
         <div className="tagbar">
           {p.allTags.map((t) => (
@@ -103,67 +107,74 @@ export function NoteList(p: Props) {
           ))}
         </div>
       </div>
-      {isBrowsingFolder &&
-        p.childFolders.map((f) => (
-          <FolderCard
-            key={f.id}
-            folder={f}
-            isOpen={openId === f.id}
-            onOpenChange={(open) => setOpenId(open ? f.id : null)}
-            onCloseOthers={() => setOpenId((cur) => (cur === f.id ? cur : null))}
-            onOpen={() => p.onOpenFolder(f.id)}
+      {/* フォルダ間の移動でもスライドアニメを効かせるため、コンテンツ部だけkey={currentFolderId}で再マウントする。
+          ヘッダー（.list-header）は含めない＝stickyのままフォルダ移動時もガタつかせない */}
+      <div
+        className={`list-content ${p.navDirection === "back" ? "slide-in-left" : "slide-in-right"}`}
+        key={p.currentFolderId ?? "root"}
+      >
+        {isBrowsingFolder &&
+          p.childFolders.map((f) => (
+            <FolderCard
+              key={f.id}
+              folder={f}
+              isOpen={openId === f.id}
+              onOpenChange={(open) => setOpenId(open ? f.id : null)}
+              onCloseOthers={() => setOpenId((cur) => (cur === f.id ? cur : null))}
+              onOpen={() => p.onOpenFolder(f.id)}
+              onDelete={() => {
+                p.onDeleteFolder(f.id);
+                setOpenId((cur) => (cur === f.id ? null : cur));
+              }}
+              onMoveNote={p.onMoveNote}
+              onMoveFolder={p.onMoveFolder}
+              onReorder={handleReorderFolder}
+            />
+          ))}
+        {p.notes.map((n) => (
+          <SwipeableCard
+            key={n.id}
+            isOpen={openId === n.id}
+            onOpenChange={(open) => setOpenId(open ? n.id : null)}
+            onCloseOthers={() => setOpenId((cur) => (cur === n.id ? cur : null))}
             onDelete={() => {
-              p.onDeleteFolder(f.id);
-              setOpenId((cur) => (cur === f.id ? null : cur));
+              p.onDelete(n.id);
+              setOpenId((cur) => (cur === n.id ? null : cur));
             }}
+            onOpen={() => p.onOpen(n.id)}
+            // 絞り込み中はドロップ先（フォルダ/パンくず）が画面に無いため、ドラッグ自体を始めさせない
+            dragPayload={isBrowsingFolder ? { kind: "note", id: n.id } : undefined}
+            currentLocationId={n.folderId}
             onMoveNote={p.onMoveNote}
             onMoveFolder={p.onMoveFolder}
-            onReorder={handleReorderFolder}
-          />
+            onReorder={handleReorderNote}
+          >
+            <div className="card-title">
+              {n.importance > 0 && <span className="card-stars">{"★".repeat(n.importance)}</span>}
+              {(() => {
+                const url = urlOnly(n.body);
+                return url ? (
+                  <a className="card-link" href={url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}>
+                    {url}
+                  </a>
+                ) : n.body.trim() === "" ? null : (
+                  firstLineTitle(n.body)
+                );
+              })()}
+            </div>
+            <CardThumbs noteId={n.id} />
+            <div className="card-sub">
+              {new Date(n.updatedAt).toLocaleString("ja-JP")}
+              {n.tags.map((t) => (
+                <span key={t} className={`tag-chip ${accentClassFor(t)}`}>#{t}</span>
+              ))}
+            </div>
+          </SwipeableCard>
         ))}
-      {p.notes.map((n) => (
-        <SwipeableCard
-          key={n.id}
-          isOpen={openId === n.id}
-          onOpenChange={(open) => setOpenId(open ? n.id : null)}
-          onCloseOthers={() => setOpenId((cur) => (cur === n.id ? cur : null))}
-          onDelete={() => {
-            p.onDelete(n.id);
-            setOpenId((cur) => (cur === n.id ? null : cur));
-          }}
-          onOpen={() => p.onOpen(n.id)}
-          // 絞り込み中はドロップ先（フォルダ/パンくず）が画面に無いため、ドラッグ自体を始めさせない
-          dragPayload={isBrowsingFolder ? { kind: "note", id: n.id } : undefined}
-          currentLocationId={n.folderId}
-          onMoveNote={p.onMoveNote}
-          onMoveFolder={p.onMoveFolder}
-          onReorder={handleReorderNote}
-        >
-          <div className="card-title">
-            {n.importance > 0 && <span className="card-stars">{"★".repeat(n.importance)}</span>}
-            {(() => {
-              const url = urlOnly(n.body);
-              return url ? (
-                <a className="card-link" href={url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}>
-                  {url}
-                </a>
-              ) : n.body.trim() === "" ? null : (
-                firstLineTitle(n.body)
-              );
-            })()}
-          </div>
-          <CardThumbs noteId={n.id} />
-          <div className="card-sub">
-            {new Date(n.updatedAt).toLocaleString("ja-JP")}
-            {n.tags.map((t) => (
-              <span key={t} className={`tag-chip ${accentClassFor(t)}`}>#{t}</span>
-            ))}
-          </div>
-        </SwipeableCard>
-      ))}
-      {p.notes.length === 0 && (
-        <p className="empty">まだメモがありません。「新規」から書き始めるか、URLや画像を貼り付けてください。</p>
-      )}
+        {p.notes.length === 0 && (
+          <p className="empty">まだメモがありません。「新規」から書き始めるか、URLや画像を貼り付けてください。</p>
+        )}
+      </div>
     </div>
   );
 }

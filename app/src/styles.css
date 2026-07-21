@@ -42,7 +42,14 @@ button.tint { background: var(--acc-tint, var(--card)); border-color: var(--acc,
 html, body {
   /* 縦パンのみ許可＝ピンチズーム・ダブルタップズーム無効（アプリ型UI） */
   touch-action: pan-y;
+  /* アプリシェル方式: html/body自体はスクロールさせず、.appだけをスクロールコンテナにする。
+     iOSのラバーバンドスクロール（ヘッダー上に空白ができて上下に動く現象）の根治と、
+     空白域を.app内に収めて右フリック戻りが画面全域で効くようにするため */
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
 }
+#root { height: 100%; }
 
 body {
   margin: 0;
@@ -57,7 +64,17 @@ h2 {
   font-weight: 600;
   letter-spacing: 0.02em;
 }
-.app { max-width: 720px; margin: 0 auto; padding: 8px; }
+.app {
+  max-width: 720px; margin: 0 auto; padding: 8px;
+  padding-top: calc(env(safe-area-inset-top) + 8px);
+  /* スクロールコンテナ本体。html/bodyはoverflow:hiddenにしたため、実際のスクロール・バウンスはここで起きる */
+  height: 100vh;
+  height: 100dvh; /* 対応ブラウザではこちらが優先される（100vhはfallback） */
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: none;
+}
 .toolbar {
   display: flex; gap: 8px; align-items: center; padding: 8px 0;
 }
@@ -67,7 +84,6 @@ h2 {
    複数のstickyが競合してズレたり背後のカードが透けたりしないようにする */
 .list-header {
   position: sticky; top: 0; z-index: 5; background: var(--paper);
-  padding-top: env(safe-area-inset-top);
   border-bottom: 1px solid var(--rule);
 }
 input, select, textarea, button { font: inherit; }
@@ -117,6 +133,11 @@ button.icon-btn { width: 36px; height: 36px; padding: 0; }
 .empty { color: var(--ink-soft); text-align: center; padding: 40px 0; }
 
 .note { display: flex; flex-direction: column; min-height: 95vh; }
+/* メモ画面のツールバーは指の当てやすさを優先して拡大する（一覧側は現状維持）。
+   .starだけは既存の見た目（星グリフのfont-size 1.2rem・padding 4px）を保つため対象から外す */
+.note .toolbar { gap: 10px; }
+.note .toolbar button:not(.star) { min-height: 44px; padding: 10px 14px; font-size: 14px; }
+.note .toolbar button.icon-btn { width: 44px; height: 44px; padding: 0; }
 .stars { display: flex; }
 .star { border: none; background: none; color: var(--rule); padding: 4px; font-size: 1.2rem; min-height: 44px; min-width: 44px; }
 .star.on { color: var(--star); }
@@ -203,17 +224,24 @@ button.icon-btn { width: 36px; height: 36px; padding: 0; }
 .insert-before { box-shadow: inset 0 2px 0 0 var(--indigo), var(--shadow-1), var(--shadow-2); }
 .insert-after { box-shadow: inset 0 -2px 0 0 var(--indigo), var(--shadow-1), var(--shadow-2); }
 
-/* 画面切替（list/note/settings/trash）: フェード＋上方向スライド */
-.view-transition { animation: view-enter 120ms ease-out; }
-@keyframes view-enter {
-  from { opacity: 0; transform: translateY(4px); }
-  to { opacity: 1; transform: translateY(0); }
+/* 画面切替（list/note/settings/trash）・フォルダ間移動: 全面スライド（iPhoneメモ帳寄り、本めくりは無し）。
+   戻り操作（navigateBack・各画面の←ボタン・パンくずで上位へ）は新画面が左から、
+   それ以外の進み操作は右からスライドインする。App.tsxのnavDirectionに応じてどちらかのクラスを付ける */
+.slide-in-left { animation: slide-in-left 200ms ease-out; }
+.slide-in-right { animation: slide-in-right 200ms ease-out; }
+@keyframes slide-in-left {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
+}
+@keyframes slide-in-right {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
 }
 @keyframes dot-pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.45; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .view-transition { animation: none; }
+  .slide-in-left, .slide-in-right { animation: none; }
   .dot.syncing { animation: none; }
 }

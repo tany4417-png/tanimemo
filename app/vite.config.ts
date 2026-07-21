@@ -4,6 +4,8 @@ import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
 
 export default defineConfig({
+  // ビルド時刻を埋め込む。設定画面に表示し、PCと端末とで表示中のビルドがずれていないかを確認できるようにする
+  define: { __APP_VERSION__: JSON.stringify(new Date().toISOString().slice(0, 16).replace("T", " ")) },
   plugins: [
     react(),
     VitePWA({

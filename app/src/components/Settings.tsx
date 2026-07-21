@@ -12,6 +12,17 @@ type Props = {
 
 export function Settings({ syncBar, token, onSave, onBack, onExport, onTrash }: Props) {
   const [value, setValue] = useState(token);
+
+  // PCと端末とで表示中のビルドがずれる問題の再発防止。SWがあれば更新チェックしてから、
+  // どちらにせよ1秒後にリロードする（SW未対応環境ではリロードのみ行う）
+  async function updateApp() {
+    if ("serviceWorker" in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map((r) => r.update()));
+    }
+    setTimeout(() => location.reload(), 1000);
+  }
+
   return (
     <div className="settings">
       <div className="list-header">
@@ -34,6 +45,11 @@ export function Settings({ syncBar, token, onSave, onBack, onExport, onTrash }: 
       <button onClick={onTrash}>
         <TrashIcon size={18} />
         ゴミ箱
+      </button>
+      <hr />
+      <p>バージョン: {__APP_VERSION__}</p>
+      <button className="tint acc-blue" onClick={() => void updateApp()}>
+        アプリを更新
       </button>
     </div>
   );

@@ -19,6 +19,9 @@ type View = { name: "list" } | { name: "note"; id: string; isNew?: boolean } | {
 
 export default function App() {
   const [view, setView] = useState<View>({ name: "list" });
+  // 画面遷移のスライド方向。戻り系（navigateBack・各画面の←ボタン・パンくずで上位へ）で"back"、
+  // それ以外の遷移（新規作成・メモを開く・設定/ゴミ箱を開く・フォルダへ入るなど）で"forward"をセットする
+  const [navDirection, setNavDirection] = useState<"forward" | "back">("forward");
   const [sort, setSortState] = useState<SortMode>(() => (localStorage.getItem("tanimemo.sort") as SortMode) ?? "created");
   const setSort = (m: SortMode) => {
     localStorage.setItem("tanimemo.sort", m);
@@ -127,17 +130,34 @@ export default function App() {
     return () => document.removeEventListener("paste", onPaste);
   }, [view, scheduleSync]);
 
+  // "それ以外の遷移"（進み操作）用のsetViewラッパ。navDirectionを"forward"にしてから画面を切り替える
+  const goForward = useCallback((v: View) => {
+    setNavDirection("forward");
+    setView(v);
+  }, []);
+
   const onCreate = useCallback(async () => {
     const n = await createNote("", [], currentFolderId);
-    setView({ name: "note", id: n.id, isNew: true });
-  }, [currentFolderId]);
+    goForward({ name: "note", id: n.id, isNew: true });
+  }, [currentFolderId, goForward]);
 
-  const onOpenFolder = useCallback((id: string | null) => setCurrentFolderId(id), []);
+  // フォルダカードで下の階層へ入る（進み操作＝forward）
+  const onOpenFolder = useCallback((id: string | null) => {
+    setNavDirection("forward");
+    setCurrentFolderId(id);
+  }, []);
+
+  // パンくずで上位の階層へ戻る（戻り操作＝back）。折りたたみ済みの祖先idをそのまま受け取るだけなので計算不要
+  const onNavigateUp = useCallback((id: string | null) => {
+    setNavDirection("back");
+    setCurrentFolderId(id);
+  }, []);
 
   // 背景の右フリックで戻る先。メモ→一覧、設定→一覧、ゴミ箱→設定、一覧(フォルダ内)→親フォルダ、
   // 一覧(ルート)→何もしない。folderPathListはルート→現在フォルダの順の祖先列なので、
   // 末尾の1つ手前が親フォルダ（無ければ最上位でnull）
   const navigateBack = useCallback(() => {
+    setNavDirection("back");
     if (view.name === "note") {
       setView({ name: "list" });
       return;
@@ -253,14 +273,17 @@ export default function App() {
       pending={pending}
       lastSync={lastSync}
       onSync={() => void syncNow()}
-      onSettings={() => setView({ name: "settings" })}
+      onSettings={() => goForward({ name: "settings" })}
     />
   );
 
+  // navDirectionに応じたスライドイン方向のクラス（戻り=左から、進み=右から）
+  const slideClass = navDirection === "back" ? "slide-in-left" : "slide-in-right";
+
   return (
     <main className="app" onPointerDown={onMainPointerDown} onPointerUp={onMainPointerUp}>
-      {/* 画面切替（list/note/settings/trash）ごとにkeyを変えてフェード＋スライドで再マウントさせる。DOM構造変更はこのラッパのみ */}
-      <div className="view-transition" key={view.name}>
+      {/* 画面切替（list/note/settings/trash）ごとにkeyを変えて全面スライドで再マウントさせる。DOM構造変更はこのラッパのみ */}
+      <div className={`view-transition ${slideClass}`} key={view.name}>
         {view.name === "list" && (
           <NoteList
             syncBar={syncBar}
@@ -272,16 +295,20 @@ export default function App() {
             onToggleTag={(t) => setActiveTags((a) => (a.includes(t) ? a.filter((x) => x !== t) : [...a, t]))}
             query={query}
             onQuery={setQuery}
-            onOpen={(id) => setView({ name: "note", id })}
+            onOpen={(id) => goForward({ name: "note", id })}
             onCreate={onCreate}
             onDelete={async (id) => {
               await softDeleteNote(id);
               scheduleSync();
             }}
             isBrowsingFolder={isBrowsingFolder}
+            currentFolderId={currentFolderId}
+            navDirection={navDirection}
             folderPath={folderPathList}
             childFolders={childFolders}
             onOpenFolder={onOpenFolder}
+            onNavigateUp={onNavigateUp}
+            onBack={navigateBack}
             onCreateFolder={onCreateFolder}
             onRenameCurrentFolder={onRenameCurrentFolder}
             onDeleteFolder={onDeleteFolder}
@@ -302,10 +329,10 @@ export default function App() {
             }}
             onDelete={async () => {
               await softDeleteNote(current.id);
-              setView({ name: "list" });
+              goForward({ name: "list" });
               scheduleSync();
             }}
-            onBack={() => setView({ name: "list" })}
+            onBack={navigateBack}
             onMoved={() => scheduleSync()}
             onAttached={() => scheduleSync()}
           />
@@ -317,9 +344,9 @@ export default function App() {
             onSave={(t) => {
               localStorage.setItem("tanimemo.token", t);
               setToken(t);
-              setView({ name: "list" });
+              goForward({ name: "list" });
             }}
-            onBack={() => setView({ name: "list" })}
+            onBack={navigateBack}
             onExport={async () => {
               const { blob, missingImages } = await exportZip(token);
               if (missingImages > 0) {
@@ -331,11 +358,11 @@ export default function App() {
               a.click();
               URL.revokeObjectURL(a.href);
             }}
-            onTrash={() => setView({ name: "trash" })}
+            onTrash={() => goForward({ name: "trash" })}
           />
         )}
         {view.name === "trash" && (
-          <TrashScreen syncBar={syncBar} onBack={() => setView({ name: "settings" })} onRestored={() => scheduleSync()} />
+          <TrashScreen syncBar={syncBar} onBack={navigateBack} onRestored={() => scheduleSync()} />
         )}
       </div>
     </main>
