@@ -4,8 +4,8 @@ import { listTrashedFolders } from "../lib/folders";
 import { firstLineTitle } from "../lib/markdown";
 import { TRASH_RETENTION_MS, listTrashedNotes } from "../lib/notes";
 import type { Folder, Note } from "../lib/types";
+import { CardThumbs } from "./CardThumbs";
 import { BackIcon, FolderIcon } from "./icons";
-import { CardThumbs } from "./NoteList";
 
 type Props = {
   syncBar: React.ReactNode;

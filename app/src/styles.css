@@ -1,3 +1,4 @@
+/* ==================== トークン ==================== */
 :root {
   --paper: #FAF6EE;      /* 背景 */
   --card: #FFFFFF;       /* カード面 */
@@ -7,6 +8,7 @@
   --indigo: #2B5F8A;     /* アクセント: リンク・主ボタン・選択・フォーカス */
   --vermilion: #B03A2E;  /* 削除・破棄のみ */
   --star: #C9920A;       /* 星 */
+  --neutral: #6B6455;    /* ボタンの中立塗りつぶし（役割色が無いボタンの既定色） */
   --shadow-1: 0 1px 2px rgba(42,39,34,.06);
   --shadow-2: 0 4px 12px rgba(42,39,34,.05);
   --shadow-lift: 0 8px 24px rgba(42,39,34,.14);
@@ -35,18 +37,7 @@
 .acc-violet { --acc: var(--c-violet); --acc-tint: var(--t-violet); }
 .acc-pink   { --acc: var(--c-pink);   --acc-tint: var(--t-pink); }
 
-/* ボタンの役割色（tint+deepパターン）。危険系（.danger）は対象外で--vermilionのまま */
-/* ボタンは塗りつぶし＋白文字で統一（2026-07-21 オーナー要望。タグ・星・パンくずは対象外） */
-button.tint { background: var(--acc, #6B6455); border-color: var(--acc, #6B6455); color: #fff; }
-/* アイコンのみのボタン（.icon-btn: 戻る・写真・undo/redoなど）は中立塗りつぶしの対象から外し、
-   下のbutton.icon-btnルールで元の「白背景・--rule枠・--inkアイコン」に戻す */
-.syncbar button:not(.tint):not(.icon-btn),
-.toolbar button:not(.primary):not(.tint):not(.star):not(.danger):not(.icon-btn),
-.settings button:not(.primary):not(.tint):not(.icon-btn) {
-  background: #6B6455; border-color: #6B6455; color: #fff;
-}
-button.danger { background: var(--vermilion); border-color: var(--vermilion); color: #fff; }
-
+/* ==================== ベース ==================== */
 * { box-sizing: border-box; }
 html, body {
   /* 縦パンのみ許可＝ピンチズーム・ダブルタップズーム無効（アプリ型UI） */
@@ -73,6 +64,16 @@ h2 {
   font-weight: 600;
   letter-spacing: 0.02em;
 }
+input, select, textarea, button { font: inherit; }
+input, select, textarea {
+  /* iOS Safariは16px未満のフォーカスで自動ズームしてしまう。ピンチズームも解除されないため
+     16px固定でズームの揺れ自体を起こさせない（buttonは対象外＝フォーカスしても拡大しないため据え置き） */
+  font-size: 16px;
+  border: 1px solid var(--rule); border-radius: 8px; padding: 8px; background: var(--card); color: var(--ink);
+}
+:focus-visible { outline: 2px solid var(--indigo); outline-offset: 2px; }
+
+/* ==================== レイアウトシェル ==================== */
 .app {
   max-width: 720px; margin: 0 auto; padding: 8px;
   /* スクロールしない枠。height 100dvhの箱そのものは動かず、中の.screen（各画面）だけをtranslateXで
@@ -87,6 +88,8 @@ h2 {
 .screen { height: 100%; display: flex; flex-direction: column; }
 /* 画面本文（ヘッダー以外）。ここだけがスクロール＆バウンドする。containにして親（.app）へバウンドを連鎖させない */
 .screen-body { flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior-y: contain; }
+
+/* ==================== ヘッダ ==================== */
 .toolbar {
   display: flex; gap: 8px; align-items: center; padding: 8px 0;
 }
@@ -100,13 +103,20 @@ h2 {
   border-bottom: 1px solid var(--rule);
   padding-top: env(safe-area-inset-top);
 }
-input, select, textarea, button { font: inherit; }
-input, select, textarea {
-  /* iOS Safariは16px未満のフォーカスで自動ズームしてしまう。ピンチズームも解除されないため
-     16px固定でズームの揺れ自体を起こさせない（buttonは対象外＝フォーカスしても拡大しないため据え置き） */
-  font-size: 16px;
-  border: 1px solid var(--rule); border-radius: 8px; padding: 8px; background: var(--card); color: var(--ink);
+.syncbar {
+  display: flex; gap: 8px; align-items: center; font-size: 12px; color: var(--ink-soft);
+  padding: 6px 0; background: var(--paper);
 }
+.syncbar .spacer { flex: 1; }
+.syncbar button { padding: 4px 10px; font-size: 12px; min-height: 28px; }
+/* undo/redo（グローバル操作履歴）はアイコンのみの正方形ボタンに保つ（他の同期バーボタンとpaddingが競合しないよう明示） */
+.syncbar button.icon-btn { width: 28px; height: 28px; min-height: 28px; padding: 0; }
+.dot { width: 9px; height: 9px; border-radius: 50%; background: #6cb06c; } /* 同期成功=緑。パレットに対応トークンが無いため直書きのまま維持 */
+.dot.syncing { background: var(--star); animation: dot-pulse 1.6s ease-in-out infinite; }
+.dot.offline { background: var(--ink-soft); }
+.dot.error { background: #b03030; } /* vermilionは削除・破棄専用のため、同期エラー表示には流用しない */
+
+/* ==================== ボタン ==================== */
 button {
   border: 1px solid var(--rule); border-radius: 8px; padding: 6px 12px; min-height: 36px; font-size: 13.5px;
   background: var(--card); color: var(--ink); cursor: pointer;
@@ -116,8 +126,20 @@ button.primary { background: var(--indigo); border-color: var(--indigo); color: 
 
 /* アイコンのみのボタン（戻るボタンなど）は正方形36×36に固定し、白背景・--rule枠・--inkアイコンの元デザインを保つ */
 button.icon-btn { width: 36px; height: 36px; padding: 0; background: var(--card); border-color: var(--rule); color: var(--ink); }
-:focus-visible { outline: 2px solid var(--indigo); outline-offset: 2px; }
 
+/* ボタンの役割色（tint+deepパターン）。危険系（.danger）は対象外で--vermilionのまま */
+/* ボタンは塗りつぶし＋白文字で統一（2026-07-21 オーナー要望。タグ・星・パンくずは対象外） */
+button.tint { background: var(--acc, var(--neutral)); border-color: var(--acc, var(--neutral)); color: #fff; }
+/* アイコンのみのボタン（.icon-btn: 戻る・写真・undo/redoなど）は中立塗りつぶしの対象から外し、
+   上のbutton.icon-btnルールで元の「白背景・--rule枠・--inkアイコン」に戻す */
+.syncbar button:not(.tint):not(.icon-btn),
+.toolbar button:not(.primary):not(.tint):not(.star):not(.danger):not(.icon-btn),
+.settings button:not(.primary):not(.tint):not(.icon-btn) {
+  background: var(--neutral); border-color: var(--neutral); color: #fff;
+}
+button.danger { background: var(--vermilion); border-color: var(--vermilion); color: #fff; }
+
+/* ==================== タグ ==================== */
 .tagbar { display: flex; gap: 6px; flex-wrap: wrap; padding-bottom: 8px; }
 .tag {
   min-height: auto; padding: 4px 10px; border-radius: 999px; font-size: 13px;
@@ -132,6 +154,7 @@ button.icon-btn { width: 36px; height: 36px; padding: 0; background: var(--card)
   margin-left: 4px;
 }
 
+/* ==================== カード ==================== */
 .card {
   background: var(--card); border: 1px solid var(--rule); border-radius: 8px;
   padding: 10px 12px; margin-bottom: 10px; cursor: pointer;
@@ -146,60 +169,7 @@ button.icon-btn { width: 36px; height: 36px; padding: 0; background: var(--card)
 .card-thumb { width: 48px; height: 48px; object-fit: cover; border-radius: 6px; border: 1px solid var(--rule); }
 .empty { color: var(--ink-soft); text-align: center; padding: 40px 0; }
 
-/* ヘッダー以外（タグ入力・本文・ギャラリー）が.screen-body側。editorのflex:1が効くよう縦flexにしておく
-   （bounce-area側に持たせる。screen-body自体はスクローラのままにしておく） */
-.note .bounce-area { display: flex; flex-direction: column; min-height: 0; }
-/* メモ画面のツールバーは指の当てやすさを優先して拡大する（一覧側は現状維持）。
-   .starだけは既存の見た目（星グリフのfont-size 1.2rem・padding 4px）を保つため対象から外す。
-   折返し（flex-wrap）だと画面幅でボタン位置が変わってしまうため、常に2段固定のレイアウトにする
-   （1段目: 戻る・★★★・スペーサー・保存/編集・削除／2段目: undo・redo・写真・移動…）。
-   .toolbar自体は縦積みの箱にし、各段（.note-toolbar-row）が横並びのflexコンテナになる */
-.note .toolbar { flex-direction: column; align-items: stretch; gap: 8px; }
-.note-toolbar-row { display: flex; align-items: center; gap: 10px; }
-.note-toolbar-row .spacer { flex: 1; }
-.note .toolbar button:not(.star) { min-height: 44px; padding: 10px 14px; font-size: 14px; }
-.note .toolbar button.icon-btn { width: 44px; height: 44px; padding: 0; }
-.stars { display: flex; }
-.star { border: none; background: none; color: var(--rule); padding: 4px; font-size: 1.2rem; min-height: 44px; min-width: 44px; }
-.star.on { color: var(--star); }
-.tags-input { margin-bottom: 8px; }
-.editor { flex: 1; min-height: 55vh; resize: none; line-height: 1.7; }
-.note-view { background: var(--card); border: 1px solid var(--rule); border-radius: 10px; padding: 4px 16px; line-height: 1.8; overflow-wrap: break-word; }
-.note-view a { color: var(--indigo); }
-.note-view input[type="checkbox"] { width: 1.1em; height: 1.1em; }
-
-.syncbar {
-  display: flex; gap: 8px; align-items: center; font-size: 12px; color: var(--ink-soft);
-  padding: 6px 0; background: var(--paper);
-}
-.syncbar .spacer { flex: 1; }
-.syncbar button { padding: 4px 10px; font-size: 12px; min-height: 28px; }
-/* undo/redo（グローバル操作履歴）はアイコンのみの正方形ボタンに保つ（他の同期バーボタンとpaddingが競合しないよう明示） */
-.syncbar button.icon-btn { width: 28px; height: 28px; min-height: 28px; padding: 0; }
-.dot { width: 9px; height: 9px; border-radius: 50%; background: #6cb06c; } /* 同期成功=緑。パレットに対応トークンが無いため直書きのまま維持 */
-.dot.syncing { background: var(--star); animation: dot-pulse 1.6s ease-in-out infinite; }
-.dot.offline { background: var(--ink-soft); }
-.dot.error { background: #b03030; } /* vermilionは削除・破棄専用のため、同期エラー表示には流用しない */
-
-.settings { max-width: 420px; }
-/* ヘッダー以外（トークン欄・エクスポート・ゴミ箱・バージョン表示など）が.screen-body側。
-   元の縦積み+gapの見た目を保つため、bounce-area側に移す */
-.settings .bounce-area { display: flex; flex-direction: column; gap: 10px; }
-/* .screen-body直下の中身全体を1枚でラップする箱。常に「コンテナ＋1px」の高さにすることで、
-   iOSのラバーバンド（スクロール余地のないスクローラはバウンドしない仕様）を内容が短いときも発生させる。
-   .note/.settingsの上書きルールより後ろに置く＝同じ詳細度(2クラス)のためソース順で決着し、
-   .note .bounce-areaのmin-height:0をここのcalc(100% + 1px)が上書きしてラバーバンドを成立させる */
-.screen-body > .bounce-area { min-height: calc(100% + 1px); }
-/* 設定画面の「同期の診断」折りたたみパネル。summary自体はクリック可能なことが分かるようポインタにするだけで、
-   中身(.diag-body)は他の設定項目と同じ縦積み+gapに合わせて段落の余白を詰める */
-.diag summary { cursor: pointer; }
-.diag-body { display: flex; flex-direction: column; gap: 4px; padding-top: 8px; font-size: 13px; color: var(--ink-soft, #6b6455); }
-.diag-body button { align-self: flex-start; margin-top: 4px; }
-.gallery { display: flex; gap: 8px; flex-wrap: wrap; padding: 10px 0; }
-.thumb { width: 96px; height: 96px; object-fit: cover; border-radius: 8px; border: 1px solid var(--rule); cursor: pointer; }
-.overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.85); display: flex; align-items: center; justify-content: center; z-index: 10; }
-.overlay img { max-width: 96vw; max-height: 96vh; }
-
+/* ==================== 一覧/フォルダ ==================== */
 .swipe-wrap {
   /* 削除ボタンの端がカード外に覗かないように横だけクリップ（タブの縦はみ出しは残す） */
   overflow-x: clip; position: relative; margin-bottom: 10px; }
@@ -213,14 +183,6 @@ button.icon-btn { width: 36px; height: 36px; padding: 0; background: var(--card)
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
   background: var(--vermilion); color: #fff; border: none; border-radius: 0 8px 8px 0;
   font-weight: 600; font-size: 12px; padding: 0;
-}
-.trash-note { font-size: 0.85rem; color: var(--ink-soft); }
-.trash-card button { margin-top: 6px; }
-.trash-folder-title { display: flex; align-items: center; gap: 6px; font-size: 16px; font-weight: 600; }
-.trash-folder-title .folder-icon { color: var(--acc, var(--ink)); }
-.trash-kind {
-  font-size: 11px; font-weight: 400; color: var(--ink-soft);
-  border: 1px solid var(--rule); border-radius: 999px; padding: 1px 8px;
 }
 
 .breadcrumb { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; font-size: 13px; padding-bottom: 8px; }
@@ -250,6 +212,59 @@ button.icon-btn { width: 36px; height: 36px; padding: 0; background: var(--card)
 .folder-picker-item:hover { background: var(--paper); }
 .folder-picker-item.disabled { color: var(--ink-soft); cursor: default; background: var(--paper); pointer-events: none; }
 
+/* ==================== メモ画面 ==================== */
+/* ヘッダー以外（タグ入力・本文・ギャラリー）が.screen-body側。editorのflex:1が効くよう縦flexにしておく
+   （bounce-area側に持たせる。screen-body自体はスクローラのままにしておく） */
+.note .bounce-area { display: flex; flex-direction: column; min-height: 0; }
+/* メモ画面のツールバーは指の当てやすさを優先して拡大する（一覧側は現状維持）。
+   .starだけは既存の見た目（星グリフのfont-size 1.2rem・padding 4px）を保つため対象から外す。
+   折返し（flex-wrap）だと画面幅でボタン位置が変わってしまうため、常に2段固定のレイアウトにする
+   （1段目: 戻る・★★★・スペーサー・保存/編集・削除／2段目: undo・redo・写真・移動…）。
+   .toolbar自体は縦積みの箱にし、各段（.note-toolbar-row）が横並びのflexコンテナになる */
+.note .toolbar { flex-direction: column; align-items: stretch; gap: 8px; }
+.note-toolbar-row { display: flex; align-items: center; gap: 10px; }
+.note-toolbar-row .spacer { flex: 1; }
+.note .toolbar button:not(.star) { min-height: 44px; padding: 10px 14px; font-size: 14px; }
+.note .toolbar button.icon-btn { width: 44px; height: 44px; padding: 0; }
+.stars { display: flex; }
+.star { border: none; background: none; color: var(--rule); padding: 4px; font-size: 1.2rem; min-height: 44px; min-width: 44px; }
+.star.on { color: var(--star); }
+.tags-input { margin-bottom: 8px; }
+.editor { flex: 1; min-height: 55vh; resize: none; line-height: 1.7; }
+.note-view { background: var(--card); border: 1px solid var(--rule); border-radius: 10px; padding: 4px 16px; line-height: 1.8; overflow-wrap: break-word; }
+.note-view a { color: var(--indigo); }
+.note-view input[type="checkbox"] { width: 1.1em; height: 1.1em; }
+.gallery { display: flex; gap: 8px; flex-wrap: wrap; padding: 10px 0; }
+.thumb { width: 96px; height: 96px; object-fit: cover; border-radius: 8px; border: 1px solid var(--rule); cursor: pointer; }
+.overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.85); display: flex; align-items: center; justify-content: center; z-index: 10; }
+.overlay img { max-width: 96vw; max-height: 96vh; }
+
+/* ==================== 設定/ゴミ箱 ==================== */
+.settings { max-width: 420px; }
+/* ヘッダー以外（トークン欄・エクスポート・ゴミ箱・バージョン表示など）が.screen-body側。
+   元の縦積み+gapの見た目を保つため、bounce-area側に移す */
+.settings .bounce-area { display: flex; flex-direction: column; gap: 10px; }
+/* .screen-body直下の中身全体を1枚でラップする箱。常に「コンテナ＋1px」の高さにすることで、
+   iOSのラバーバンド（スクロール余地のないスクローラはバウンドしない仕様）を内容が短いときも発生させる。
+   .note/.settingsの上書きルールより後ろに置く＝同じ詳細度(2クラス)のためソース順で決着し、
+   .note .bounce-areaのmin-height:0をここのcalc(100% + 1px)が上書きしてラバーバンドを成立させる */
+.screen-body > .bounce-area { min-height: calc(100% + 1px); }
+/* 設定画面の「同期の診断」折りたたみパネル。summary自体はクリック可能なことが分かるようポインタにするだけで、
+   中身(.diag-body)は他の設定項目と同じ縦積み+gapに合わせて段落の余白を詰める */
+.diag summary { cursor: pointer; }
+.diag-body { display: flex; flex-direction: column; gap: 4px; padding-top: 8px; font-size: 13px; color: var(--ink-soft, var(--neutral)); }
+.diag-body button { align-self: flex-start; margin-top: 4px; }
+
+.trash-note { font-size: 0.85rem; color: var(--ink-soft); }
+.trash-card button { margin-top: 6px; }
+.trash-folder-title { display: flex; align-items: center; gap: 6px; font-size: 16px; font-weight: 600; }
+.trash-folder-title .folder-icon { color: var(--acc, var(--ink)); }
+.trash-kind {
+  font-size: 11px; font-weight: 400; color: var(--ink-soft);
+  border: 1px solid var(--rule); border-radius: 999px; padding: 1px 8px;
+}
+
+/* ==================== ジェスチャー/遷移 ==================== */
 .card.dragging { box-shadow: var(--shadow-lift); z-index: 20; position: relative; }
 /* ドラッグ中は縮小したカードの下に赤い削除背景が透けて見えてしまうため隠す */
 .swipe-wrap:has(.dragging) .swipe-bg { opacity: 0; }
@@ -266,6 +281,8 @@ button.icon-btn { width: 36px; height: 36px; padding: 0; background: var(--card)
    ルート要素（.screen）に直接付ける */
 .slide-in-left { animation: slide-in-left 200ms ease-out; }
 .slide-in-right { animation: slide-in-right 200ms ease-out; }
+
+/* ==================== アニメ/モーション ==================== */
 @keyframes slide-in-left {
   from { transform: translateX(-100%); }
   to { transform: translateX(0); }
