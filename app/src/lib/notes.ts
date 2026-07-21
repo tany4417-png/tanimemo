@@ -63,16 +63,29 @@ async function hasNoContent(n: Note): Promise<boolean> {
   return atts.every((a) => a.deleted === 1);
 }
 
+// 物理削除の本体。空メモ判定を通った時点で添付は全てdeleted=1のtombstoneなので、
+// メタ行とblob（本体・サムネ）も一緒に消して孤児を残さない
+async function hardDeleteNoteWithAttachments(id: string): Promise<void> {
+  const atts = await db.attachments.where("noteId").equals(id).toArray();
+  await db.transaction("rw", db.notes, db.attachments, db.attachmentBlobs, async () => {
+    await db.notes.delete(id);
+    await db.attachments.bulkDelete(atts.map((a) => a.id));
+    await db.attachmentBlobs.bulkDelete(atts.flatMap((a) => [a.id, thumbKey(a.id)]));
+  });
+}
+
 // 新規作成から何も入力せず戻ったときの後始末。未同期(dirty=1)かつ無更新(createdAt===updatedAt)なら
 // この端末しか知らない個体なので物理削除する。それ以外（編集画面の表示中に同期が走った・空のまま保存した等）は
 // サーバーが既に知っている可能性があり、ローカル物理削除だと次のpull（特にfull resync）で復活するため
-// ゴミ箱行きにする（tombstoneとして同期され、30日の期限purgeで両側から消える）
-export async function discardIfEmptyNew(id: string): Promise<"deleted" | "trashed" | "kept"> {
+// ゴミ箱行きにする（tombstoneとして同期され、30日の期限purgeで両側から消える）。
+// preferTrash=trueは同期実行中の呼び出し用。物理削除はpushエコーバック適用と競合して空メモがdirty=0で復活しうるため、
+// ゴミ箱行き（tombstoneはLWWで勝つ）に倒す
+export async function discardIfEmptyNew(id: string, opts?: { preferTrash?: boolean }): Promise<"deleted" | "trashed" | "kept"> {
   const n = await db.notes.get(id);
   if (!n || n.deleted === 1) return "kept";
   if (!(await hasNoContent(n))) return "kept";
-  if (n.dirty === 1 && n.createdAt === n.updatedAt) {
-    await db.notes.delete(id);
+  if (!opts?.preferTrash && n.dirty === 1 && n.createdAt === n.updatedAt) {
+    await hardDeleteNoteWithAttachments(id);
     return "deleted";
   }
   await softDeleteNote(id);
@@ -88,7 +101,7 @@ export async function sweepEmptyNewNotes(): Promise<number> {
   let removed = 0;
   for (const n of candidates) {
     if (await hasNoContent(n)) {
-      await db.notes.delete(n.id);
+      await hardDeleteNoteWithAttachments(n.id);
       removed += 1;
     }
   }

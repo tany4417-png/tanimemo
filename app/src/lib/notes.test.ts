@@ -179,6 +179,23 @@ describe("空メモの破棄（discardIfEmptyNew）", () => {
     await softDeleteNote(n.id);
     expect(await discardIfEmptyNew(n.id)).toBe("kept");
   });
+
+  it("preferTrash指定時は未同期・無更新でも物理削除せずゴミ箱行き", async () => {
+    const n = await createNote("");
+    expect(await discardIfEmptyNew(n.id, { preferTrash: true })).toBe("trashed");
+    expect((await db.notes.get(n.id))?.deleted).toBe(1);
+  });
+
+  it("物理削除は削除済み添付のメタ行とblobも一緒に消す", async () => {
+    const n = await createNote("");
+    await db.attachments.put({
+      id: "A4", noteId: n.id, mime: "image/png", size: 1, createdAt: 1, updatedAt: 1, deleted: 1, dirty: 1,
+    });
+    await db.attachmentBlobs.put({ id: "A4", blob: new Blob([new Uint8Array([1])]) });
+    expect(await discardIfEmptyNew(n.id)).toBe("deleted");
+    expect(await db.attachments.get("A4")).toBeUndefined();
+    expect(await db.attachmentBlobs.get("A4")).toBeUndefined();
+  });
 });
 
 describe("起動時の空メモ掃除（sweepEmptyNewNotes）", () => {

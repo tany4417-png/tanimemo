@@ -62,6 +62,8 @@ export default function App() {
   const [failedAttachments, setFailedAttachments] = useState(0);
   const timer = useRef<number | undefined>(undefined);
   const syncing = useRef(false);
+  // 起動時初期化（空メモ掃除等）の完了Promise。syncNowはこれを待ってから走る（下の初期化effect参照）
+  const initCleanupRef = useRef<Promise<void>>(Promise.resolve());
   // main（.app）要素そのものへの参照。追従スワイプ中に現在マウント中の.screenをquerySelectorで
   // 見つけてtranslateXを直接書き込む（Reactのstateを介さないため、カード枚数が多い一覧でも重くならない）
   const mainRef = useRef<HTMLElement | null>(null);
@@ -159,6 +161,8 @@ export default function App() {
     syncing.current = true;
     setStatus("syncing");
     try {
+      // 起動時初期化（空メモ掃除等）が終わる前に同期を始めない（初期化effectのコメント参照）
+      await initCleanupRef.current;
       const result = await runSync(token);
       setFailedAttachments(result.failedAttachments);
       await repairOrphansSafely();
@@ -215,17 +219,20 @@ export default function App() {
 
   useEffect(() => () => window.clearTimeout(timer.current), []);
 
+  // 起動時の初期化（空メモ掃除→ゴミ箱期限purge→孤児救済)。完了PromiseをinitCleanupRefで公開し、
+  // syncNowは必ずこれを待ってから走る。掃除より先に初回同期が空メモをpushすると、物理削除後の
+  // エコーバック適用でdirty=0の空メモとして復活し、以後の掃除（dirty=1が条件）が二度と効かなくなるため
   useEffect(() => {
-    void syncNow();
-  }, [syncNow]);
-
-  useEffect(() => {
-    void (async () => {
+    initCleanupRef.current = (async () => {
       await sweepEmptyNewNotes();
       await purgeExpiredTrashLocal();
       await repairOrphansSafely();
     })();
   }, []);
+
+  useEffect(() => {
+    void syncNow();
+  }, [syncNow]);
 
   useEffect(() => {
     const onOnline = () => void syncNow();
@@ -312,9 +319,13 @@ export default function App() {
         // tombstoneを同期する。空メモを復活させる需要は無いためundo履歴（runAction）には積まない。
         // fire-and-forget: 一覧のliveQueryが削除完了時に再発火するため、遷移をawaitで遅らせない
         if (view.isNew) {
-          void discardIfEmptyNew(view.id).then((r) => {
-            if (r === "trashed") scheduleSync();
-          });
+          void discardIfEmptyNew(view.id, { preferTrash: syncing.current })
+            .then((r) => {
+              if (r === "trashed") scheduleSync();
+            })
+            .catch(() => {
+              // IndexedDB障害等はここで握りつぶす（残った空メモは次回起動時の掃除で回収される）
+            });
         }
         setView({ name: "list" });
         return;
