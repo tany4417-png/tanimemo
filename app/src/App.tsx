@@ -23,7 +23,7 @@ import {
   restoreFolderWithContents,
   updateFolder,
 } from "./lib/folders";
-import { isBackFlick } from "./lib/gesture";
+import { shouldCompleteBack } from "./lib/gesture";
 import { allTags, createNote, listActiveNotes, purgeExpiredTrashLocal, restoreNote, softDeleteNote, updateNote, type NotePatch } from "./lib/notes";
 import type { ReorderPlan } from "./lib/reorder";
 import { filterByTags, searchNotes, sortNotes, type SortMode } from "./lib/sort";
@@ -57,9 +57,17 @@ export default function App() {
   const [lastSync, setLastSync] = useState<number | null>(null);
   const timer = useRef<number | undefined>(undefined);
   const syncing = useRef(false);
+  // main（.app）要素そのものへの参照。追従スワイプ中に現在マウント中の.screenをquerySelectorで
+  // 見つけてtranslateXを直接書き込む（Reactのstateを介さないため、カード枚数が多い一覧でも重くならない）
+  const mainRef = useRef<HTMLElement | null>(null);
   // 背景の右フリック（iOS風の戻るジェスチャー）検出用。pointerdown時の座標・時刻を覚えておき、
-  // pointerupでisBackFlickへ渡す。カード等の操作要素上のpointerdownではnullのままにして無効化する
+  // 追従スワイプの起点にする。カード等の操作要素上や、戻り先が無い場面でのpointerdownではnullのままにして無効化する
   const backSwipeStart = useRef<{ x: number; y: number; t: number } | null>(null);
+  // 追従スワイプ中かどうか（dx>10・横優勢になった時点でtrueになる）。trueの間だけ.screenへtranslateXを反映し、
+  // touchmove側で縦スクロールをpreventDefaultする
+  const followingBack = useRef(false);
+  // 追従スワイプ中に直接styleを書き換える対象（pointerdown時点でマウントされている.screen要素）
+  const dragScreenEl = useRef<HTMLElement | null>(null);
   // グローバルundo/redo（削除・移動・並べ替え・内容変更の操作履歴）。メモリ内のみ＝リロードで消える
   const [stacks, setStacks] = useState<ActionStacks>({ past: [], future: [] });
 
@@ -237,29 +245,104 @@ export default function App() {
     }
   }, [view, currentFolderId, folderPathList]);
 
+  // 戻り先が無い場面（一覧ルート）かどうか。navigateBackの分岐と対応させておき、falseなら追従自体を始めない
+  const canGoBack = view.name !== "list" || currentFolderId !== null;
+
+  // 追従中の.screenをtranslateX(0)へ150ms transitionで戻す（未達での指離し・縦スクロールへの移行で共通に使う）
+  function snapBackScreen() {
+    const el = dragScreenEl.current;
+    if (!el) return;
+    el.style.transition = "transform 150ms ease";
+    el.style.transform = "translateX(0px)";
+  }
+
   // 背景の右フリック検出（iOS風の戻るジェスチャー）。カード・ボタン等の操作要素上のpointerdownは
-  // closestで除外し、既存のスワイプ・D&D・タップ操作と干渉しないようにする
-  const onMainPointerDown = useCallback((e: ReactPointerEvent<HTMLElement>) => {
-    const target = e.target as HTMLElement;
-    if (target.closest(".card, .swipe-wrap, button, a, input, textarea, select, .breadcrumb, .tagbar, .overlay")) {
+  // closestで除外し、既存のスワイプ・D&D・タップ操作と干渉しないようにする。戻り先が無い場面でも始めない
+  const onMainPointerDown = useCallback(
+    (e: ReactPointerEvent<HTMLElement>) => {
+      const target = e.target as HTMLElement;
+      if (!canGoBack || target.closest(".card, .swipe-wrap, button, a, input, textarea, select, .breadcrumb, .tagbar, .overlay")) {
+        backSwipeStart.current = null;
+        return;
+      }
+      backSwipeStart.current = { x: e.clientX, y: e.clientY, t: Date.now() };
+      followingBack.current = false;
+      dragScreenEl.current = null;
+    },
+    [canGoBack]
+  );
+
+  // 右方向のドラッグ（dx>10・|dx|>|dy|）が始まったら、現在の.screenを指に追従させる（transform: translateX(dx)、dx≥0のみ）。
+  // 縦優勢（|dy|>|dx|）になったら追従を中止して0に戻し、このジェスチャーは終える（縦スクロールに譲る）
+  const onMainPointerMove = useCallback((e: ReactPointerEvent<HTMLElement>) => {
+    const start = backSwipeStart.current;
+    if (!start) return;
+    const dx = e.clientX - start.x;
+    const dy = e.clientY - start.y;
+
+    if (!followingBack.current) {
+      if (!(dx > 10 && Math.abs(dx) > Math.abs(dy))) return;
+      followingBack.current = true;
+      dragScreenEl.current = mainRef.current?.querySelector<HTMLElement>(".screen") ?? null;
+      const el = dragScreenEl.current;
+      if (el) el.style.transition = "none";
+      try {
+        (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+      } catch {
+        // 一部環境でcaptureできなくても追従自体は継続する
+      }
+    }
+
+    if (Math.abs(dy) > Math.abs(dx)) {
+      snapBackScreen();
       backSwipeStart.current = null;
+      followingBack.current = false;
+      dragScreenEl.current = null;
       return;
     }
-    backSwipeStart.current = { x: e.clientX, y: e.clientY, t: Date.now() };
+
+    const el = dragScreenEl.current;
+    if (el) el.style.transform = `translateX(${Math.max(0, dx)}px)`;
   }, []);
 
   const onMainPointerUp = useCallback(
     (e: ReactPointerEvent<HTMLElement>) => {
       const start = backSwipeStart.current;
+      const wasFollowing = followingBack.current;
       backSwipeStart.current = null;
-      if (!start) return;
+      followingBack.current = false;
+      if (!start || !wasFollowing) {
+        dragScreenEl.current = null;
+        return;
+      }
       const dx = e.clientX - start.x;
-      const dy = e.clientY - start.y;
-      const elapsedMs = Date.now() - start.t;
-      if (isBackFlick(dx, dy, elapsedMs)) navigateBack();
+      const vx = dx / Math.max(1, Date.now() - start.t);
+      if (shouldCompleteBack(dx, vx)) navigateBack();
+      else snapBackScreen();
+      dragScreenEl.current = null;
     },
     [navigateBack]
   );
+
+  // pointercancel（中断）でも追従中なら0へ戻し、状態を片付ける
+  const onMainPointerCancel = useCallback(() => {
+    if (followingBack.current) snapBackScreen();
+    backSwipeStart.current = null;
+    followingBack.current = false;
+    dragScreenEl.current = null;
+  }, []);
+
+  // 追従中（followingBack）は縦スクロールを起こさない。既存のD&D（NoteList側）と同じく、
+  // 非passiveのtouchmoveでpreventDefaultする以外に手段が無いため、ここだけネイティブイベントを使う
+  useEffect(() => {
+    const el = mainRef.current;
+    if (!el) return;
+    function onTouchMove(ev: TouchEvent) {
+      if (followingBack.current) ev.preventDefault();
+    }
+    el.addEventListener("touchmove", onTouchMove, { passive: false });
+    return () => el.removeEventListener("touchmove", onTouchMove);
+  }, []);
 
   const onCreateFolder = useCallback(async () => {
     const name = prompt("新しいフォルダ名");
@@ -438,120 +521,130 @@ export default function App() {
   const slideClass = navDirection === "back" ? "slide-in-left" : "slide-in-right";
 
   return (
-    <main className="app" onPointerDown={onMainPointerDown} onPointerUp={onMainPointerUp}>
-      {/* 画面切替（list/note/settings/trash）ごとにkeyを変えて全面スライドで再マウントさせる。DOM構造変更はこのラッパのみ */}
-      <div className={`view-transition ${slideClass}`} key={view.name}>
-        {view.name === "list" && (
-          <NoteList
-            syncBar={syncBar}
-            notes={shown}
-            allTags={allTags(notes)}
-            sort={sort}
-            onSort={setSort}
-            activeTags={activeTags}
-            onToggleTag={(t) => setActiveTags((a) => (a.includes(t) ? a.filter((x) => x !== t) : [...a, t]))}
-            query={query}
-            onQuery={setQuery}
-            onOpen={(id) => goForward({ name: "note", id })}
-            onCreate={onCreate}
-            onDelete={(id) => {
-              void runAction(
-                "メモを削除",
-                async () => {
-                  await softDeleteNote(id);
-                },
-                async () => {
-                  await restoreNote(id);
-                }
-              );
-            }}
-            isBrowsingFolder={isBrowsingFolder}
-            currentFolderId={currentFolderId}
-            navDirection={navDirection}
-            folderPath={folderPathList}
-            childFolders={childFolders}
-            onOpenFolder={onOpenFolder}
-            onNavigateUp={onNavigateUp}
-            onBack={navigateBack}
-            onCreateFolder={onCreateFolder}
-            onRenameCurrentFolder={onRenameCurrentFolder}
-            onDeleteFolder={onDeleteFolder}
-            onMoveNote={onMoveNote}
-            onMoveFolder={onMoveFolder}
-            onReorderNote={onReorderNote}
-            onReorderFolder={onReorderFolder}
-          />
-        )}
-        {view.name === "note" && current && (
-          <NoteScreen
-            syncBar={syncBar}
-            note={current}
-            startEditing={view.name === "note" && view.isNew === true}
-            onChange={(patch) => {
-              // 逆操作に必要な旧値は、変更対象のフィールドだけをcurrentからスナップショットする
-              const before: NotePatch = {};
-              if ("body" in patch) before.body = current.body;
-              if ("tags" in patch) before.tags = current.tags;
-              if ("importance" in patch) before.importance = current.importance;
-              void runAction(
-                labelForNotePatch(patch),
-                async () => {
-                  await updateNote(current.id, patch as NotePatch);
-                },
-                async () => {
-                  await updateNote(current.id, before);
-                }
-              );
-            }}
-            onDelete={() => {
-              void runAction(
-                "メモを削除",
-                async () => {
-                  await softDeleteNote(current.id);
-                },
-                async () => {
-                  await restoreNote(current.id);
-                }
-              ).then(() => goForward({ name: "list" }));
-            }}
-            onBack={navigateBack}
-            onMoveNote={onMoveNote}
-            onAttached={() => scheduleSync()}
-          />
-        )}
-        {view.name === "settings" && (
-          <Settings
-            syncBar={syncBar}
-            token={token}
-            onSave={(t) => {
-              localStorage.setItem("tanimemo.token", t);
-              setToken(t);
-              goForward({ name: "list" });
-            }}
-            onBack={navigateBack}
-            onExport={async () => {
-              const { blob, missingImages } = await exportZip(token);
-              if (missingImages > 0) {
-                alert(`未取得の画像 ${missingImages}件はこの端末に無いため含まれていません`);
+    <main
+      className="app"
+      ref={mainRef}
+      onPointerDown={onMainPointerDown}
+      onPointerMove={onMainPointerMove}
+      onPointerUp={onMainPointerUp}
+      onPointerCancel={onMainPointerCancel}
+    >
+      {/* 画面切替（list/note/settings/trash）は各画面自身のルート要素(.screen)にslideClassを直接付ける。
+          view.nameで排他的に切り替わるため、これだけで乗り換え時に毎回フルマウントされスライドアニメが動く */}
+      {view.name === "list" && (
+        <NoteList
+          syncBar={syncBar}
+          slideClass={slideClass}
+          notes={shown}
+          allTags={allTags(notes)}
+          sort={sort}
+          onSort={setSort}
+          activeTags={activeTags}
+          onToggleTag={(t) => setActiveTags((a) => (a.includes(t) ? a.filter((x) => x !== t) : [...a, t]))}
+          query={query}
+          onQuery={setQuery}
+          onOpen={(id) => goForward({ name: "note", id })}
+          onCreate={onCreate}
+          onDelete={(id) => {
+            void runAction(
+              "メモを削除",
+              async () => {
+                await softDeleteNote(id);
+              },
+              async () => {
+                await restoreNote(id);
               }
-              const a = document.createElement("a");
-              a.href = URL.createObjectURL(blob);
-              a.download = `タニメモ-エクスポート-${localYmd(new Date())}.zip`;
-              a.click();
-              URL.revokeObjectURL(a.href);
-            }}
-            onTrash={() => goForward({ name: "trash" })}
-          />
-        )}
-        {view.name === "trash" && (
-          <TrashScreen
-            syncBar={syncBar}
-            onBack={navigateBack}
-            onRestoreNote={onRestoreNoteFromTrash}
-            onRestoreFolder={onRestoreFolderFromTrash}
-          />
-        )}
-      </div>
+            );
+          }}
+          isBrowsingFolder={isBrowsingFolder}
+          currentFolderId={currentFolderId}
+          navDirection={navDirection}
+          folderPath={folderPathList}
+          childFolders={childFolders}
+          onOpenFolder={onOpenFolder}
+          onNavigateUp={onNavigateUp}
+          onBack={navigateBack}
+          onCreateFolder={onCreateFolder}
+          onRenameCurrentFolder={onRenameCurrentFolder}
+          onDeleteFolder={onDeleteFolder}
+          onMoveNote={onMoveNote}
+          onMoveFolder={onMoveFolder}
+          onReorderNote={onReorderNote}
+          onReorderFolder={onReorderFolder}
+        />
+      )}
+      {view.name === "note" && current && (
+        <NoteScreen
+          syncBar={syncBar}
+          slideClass={slideClass}
+          note={current}
+          startEditing={view.name === "note" && view.isNew === true}
+          onChange={(patch) => {
+            // 逆操作に必要な旧値は、変更対象のフィールドだけをcurrentからスナップショットする
+            const before: NotePatch = {};
+            if ("body" in patch) before.body = current.body;
+            if ("tags" in patch) before.tags = current.tags;
+            if ("importance" in patch) before.importance = current.importance;
+            void runAction(
+              labelForNotePatch(patch),
+              async () => {
+                await updateNote(current.id, patch as NotePatch);
+              },
+              async () => {
+                await updateNote(current.id, before);
+              }
+            );
+          }}
+          onDelete={() => {
+            void runAction(
+              "メモを削除",
+              async () => {
+                await softDeleteNote(current.id);
+              },
+              async () => {
+                await restoreNote(current.id);
+              }
+            ).then(() => goForward({ name: "list" }));
+          }}
+          onBack={navigateBack}
+          onMoveNote={onMoveNote}
+          onAttached={() => scheduleSync()}
+        />
+      )}
+      {view.name === "settings" && (
+        <Settings
+          syncBar={syncBar}
+          slideClass={slideClass}
+          token={token}
+          onSave={(t) => {
+            localStorage.setItem("tanimemo.token", t);
+            setToken(t);
+            goForward({ name: "list" });
+          }}
+          onBack={navigateBack}
+          onExport={async () => {
+            const { blob, missingImages } = await exportZip(token);
+            if (missingImages > 0) {
+              alert(`未取得の画像 ${missingImages}件はこの端末に無いため含まれていません`);
+            }
+            const a = document.createElement("a");
+            a.href = URL.createObjectURL(blob);
+            a.download = `タニメモ-エクスポート-${localYmd(new Date())}.zip`;
+            a.click();
+            URL.revokeObjectURL(a.href);
+          }}
+          onTrash={() => goForward({ name: "trash" })}
+        />
+      )}
+      {view.name === "trash" && (
+        <TrashScreen
+          syncBar={syncBar}
+          slideClass={slideClass}
+          onBack={navigateBack}
+          onRestoreNote={onRestoreNoteFromTrash}
+          onRestoreFolder={onRestoreFolderFromTrash}
+        />
+      )}
     </main>
   );
 }

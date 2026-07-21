@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isBackFlick, isTap, shouldOpenSwipe } from "./gesture";
+import { isTap, shouldCompleteBack, shouldOpenSwipe } from "./gesture";
 
 describe("shouldOpenSwipe", () => {
   it("40pxを超えて左に動けば開いた状態にする", () => {
@@ -37,24 +37,36 @@ describe("isTap", () => {
   });
 });
 
-describe("isBackFlick", () => {
-  it("右方向に素早く十分な距離動けば戻るフリックとみなす", () => {
-    expect(isBackFlick(80, 5, 300)).toBe(true);
+describe("shouldCompleteBack", () => {
+  it("90pxを超えて動いていれば速度に関わらず戻り完了とみなす", () => {
+    expect(shouldCompleteBack(91, 0)).toBe(true);
   });
 
-  it("右移動が60px以下なら戻るフリックとみなさない", () => {
-    expect(isBackFlick(50, 2, 300)).toBe(false);
+  it("ちょうど90pxでは戻り完了とみなさない（速度が無ければ）", () => {
+    expect(shouldCompleteBack(90, 0)).toBe(false);
   });
 
-  it("縦方向の移動が大きい斜め方向は戻るフリックとみなさない", () => {
-    expect(isBackFlick(80, 60, 300)).toBe(false);
+  it("50pxを超えていて速度も十分なら戻り完了とみなす", () => {
+    expect(shouldCompleteBack(60, 0.6)).toBe(true);
   });
 
-  it("600msを超えてゆっくり動いた場合は戻るフリックとみなさない", () => {
-    expect(isBackFlick(80, 5, 700)).toBe(false);
+  it("ちょうど50pxでは速度が十分でも戻り完了とみなさない", () => {
+    expect(shouldCompleteBack(50, 10)).toBe(false);
   });
 
-  it("左方向の移動では戻るフリックとみなさない", () => {
-    expect(isBackFlick(-80, 5, 300)).toBe(false);
+  it("ちょうど0.5の速度では戻り完了とみなさない", () => {
+    expect(shouldCompleteBack(51, 0.5)).toBe(false);
+  });
+
+  it("50pxを超えていても速度が足りなければ戻り完了とみなさない", () => {
+    expect(shouldCompleteBack(60, 0.4)).toBe(false);
+  });
+
+  it("50px以下では速度がどれだけ速くても戻り完了とみなさない", () => {
+    expect(shouldCompleteBack(30, 5)).toBe(false);
+  });
+
+  it("左方向（負のdx）では戻り完了とみなさない", () => {
+    expect(shouldCompleteBack(-100, 2)).toBe(false);
   });
 });

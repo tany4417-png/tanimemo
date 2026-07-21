@@ -38,9 +38,11 @@
 /* ボタンの役割色（tint+deepパターン）。危険系（.danger）は対象外で--vermilionのまま */
 /* ボタンは塗りつぶし＋白文字で統一（2026-07-21 オーナー要望。タグ・星・パンくずは対象外） */
 button.tint { background: var(--acc, #6B6455); border-color: var(--acc, #6B6455); color: #fff; }
-.syncbar button:not(.tint),
-.toolbar button:not(.primary):not(.tint):not(.star):not(.danger),
-.settings button:not(.primary):not(.tint) {
+/* アイコンのみのボタン（.icon-btn: 戻る・写真・undo/redoなど）は中立塗りつぶしの対象から外し、
+   下のbutton.icon-btnルールで元の「白背景・--rule枠・--inkアイコン」に戻す */
+.syncbar button:not(.tint):not(.icon-btn),
+.toolbar button:not(.primary):not(.tint):not(.star):not(.danger):not(.icon-btn),
+.settings button:not(.primary):not(.tint):not(.icon-btn) {
   background: #6B6455; border-color: #6B6455; color: #fff;
 }
 button.danger { background: var(--vermilion); border-color: var(--vermilion); color: #fff; }
@@ -49,9 +51,9 @@ button.danger { background: var(--vermilion); border-color: var(--vermilion); co
 html, body {
   /* 縦パンのみ許可＝ピンチズーム・ダブルタップズーム無効（アプリ型UI） */
   touch-action: pan-y;
-  /* アプリシェル方式: html/body自体はスクロールさせず、.appだけをスクロールコンテナにする。
-     iOSのラバーバンドスクロール（ヘッダー上に空白ができて上下に動く現象）の根治と、
-     空白域を.app内に収めて右フリック戻りが画面全域で効くようにするため */
+  /* アプリシェル方式: html/body・.appはどれもスクロールさせない枠に留め、
+     実際のスクロール・バウンス（ラバーバンド）は各画面の.screen-bodyだけで起こす。
+     こうすることでヘッダーは常に固定され、右フリック戻りの追従（App.tsx）も画面全域で効く */
   height: 100%;
   overflow: hidden;
   overscroll-behavior: none;
@@ -73,25 +75,30 @@ h2 {
 }
 .app {
   max-width: 720px; margin: 0 auto; padding: 8px;
-  padding-top: calc(env(safe-area-inset-top) + 8px);
-  /* スクロールコンテナ本体。html/bodyはoverflow:hiddenにしたため、実際のスクロール・バウンスはここで起きる */
+  /* スクロールしない枠。height 100dvhの箱そのものは動かず、中の.screen（各画面）だけをtranslateXで
+     追従させたり、.screen-bodyだけを縦スクロールさせたりする */
   height: 100vh;
   height: 100dvh; /* 対応ブラウザではこちらが優先される（100vhはfallback） */
-  overflow-y: auto;
-  overflow-x: hidden;
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior-y: none;
+  overflow: hidden;
 }
+/* 各画面（NoteList/NoteScreen/Settings/TrashScreen）のルート要素に付けるクラス。
+   ヘッダー（.list-header）を固定表示にしたまま本文だけをスクロールさせるための縦flexコンテナ。
+   右フリック戻りの追従（App.tsxのonMainPointerMoveがこの要素をtranslateXで動かす）の対象でもある */
+.screen { height: 100%; display: flex; flex-direction: column; }
+/* 画面本文（ヘッダー以外）。ここだけがスクロール＆バウンドする。containにして親（.app）へバウンドを連鎖させない */
+.screen-body { flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior-y: contain; }
 .toolbar {
   display: flex; gap: 8px; align-items: center; padding: 8px 0;
 }
 .toolbar .search { flex: 1; min-width: 0; }
-/* 一覧・メモ・設定・ゴミ箱の各画面の上部一式（同期バー・ツールバー・パンくず・タグバー）をまとめて
-   スクロールしても上部に固定するラッパ。個々の要素ではなくこのラッパ自体をstickyにすることで、
-   複数のstickyが競合してズレたり背後のカードが透けたりしないようにする */
+/* 一覧・メモ・設定・ゴミ箱の各画面の上部一式（同期バー・ツールバー・パンくず・タグバー）をまとめるラッパ。
+   .screen（縦flex）のflex:none側＝本文（.screen-body）だけがスクロールするため、もうstickyは不要。
+   safe-area-inset-topのpaddingはここに置く（.appは画面ごとのヘッダー固定に関与しないため） */
 .list-header {
-  position: sticky; top: 0; z-index: 5; background: var(--paper);
+  flex: none;
+  background: var(--paper);
   border-bottom: 1px solid var(--rule);
+  padding-top: env(safe-area-inset-top);
 }
 input, select, textarea, button { font: inherit; }
 input, select, textarea {
@@ -107,8 +114,8 @@ button {
 }
 button.primary { background: var(--indigo); border-color: var(--indigo); color: #fff; }
 
-/* アイコンのみのボタン（戻るボタンなど）は正方形36×36に固定する */
-button.icon-btn { width: 36px; height: 36px; padding: 0; }
+/* アイコンのみのボタン（戻るボタンなど）は正方形36×36に固定し、白背景・--rule枠・--inkアイコンの元デザインを保つ */
+button.icon-btn { width: 36px; height: 36px; padding: 0; background: var(--card); border-color: var(--rule); color: var(--ink); }
 :focus-visible { outline: 2px solid var(--indigo); outline-offset: 2px; }
 
 .tagbar { display: flex; gap: 6px; flex-wrap: wrap; padding-bottom: 8px; }
@@ -139,10 +146,12 @@ button.icon-btn { width: 36px; height: 36px; padding: 0; }
 .card-thumb { width: 48px; height: 48px; object-fit: cover; border-radius: 6px; border: 1px solid var(--rule); }
 .empty { color: var(--ink-soft); text-align: center; padding: 40px 0; }
 
-.note { display: flex; flex-direction: column; min-height: 95vh; }
+/* ヘッダー以外（タグ入力・本文・ギャラリー）が.screen-body側。editorのflex:1が効くよう縦flexにしておく */
+.note .screen-body { display: flex; flex-direction: column; min-height: 0; }
 /* メモ画面のツールバーは指の当てやすさを優先して拡大する（一覧側は現状維持）。
-   .starだけは既存の見た目（星グリフのfont-size 1.2rem・padding 4px）を保つため対象から外す */
-.note .toolbar { gap: 10px; }
+   .starだけは既存の見た目（星グリフのfont-size 1.2rem・padding 4px）を保つため対象から外す。
+   ボタンが多い新規メモでも削除ボタンが画面外に出ないよう折り返す（折返し時の行間gapも10pxのまま） */
+.note .toolbar { gap: 10px; flex-wrap: wrap; }
 .note .toolbar button:not(.star) { min-height: 44px; padding: 10px 14px; font-size: 14px; }
 .note .toolbar button.icon-btn { width: 44px; height: 44px; padding: 0; }
 .stars { display: flex; }
@@ -167,7 +176,10 @@ button.icon-btn { width: 36px; height: 36px; padding: 0; }
 .dot.offline { background: var(--ink-soft); }
 .dot.error { background: #b03030; } /* vermilionは削除・破棄専用のため、同期エラー表示には流用しない */
 
-.settings { display: flex; flex-direction: column; gap: 10px; max-width: 420px; }
+.settings { max-width: 420px; }
+/* ヘッダー以外（トークン欄・エクスポート・ゴミ箱・バージョン表示など）が.screen-body側。
+   元の縦積み+gapの見た目を保つため、ここに移す */
+.settings .screen-body { display: flex; flex-direction: column; gap: 10px; }
 .gallery { display: flex; gap: 8px; flex-wrap: wrap; padding: 10px 0; }
 .thumb { width: 96px; height: 96px; object-fit: cover; border-radius: 8px; border: 1px solid var(--rule); cursor: pointer; }
 .overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.85); display: flex; align-items: center; justify-content: center; z-index: 10; }
@@ -235,7 +247,8 @@ button.icon-btn { width: 36px; height: 36px; padding: 0; }
 
 /* 画面切替（list/note/settings/trash）・フォルダ間移動: 全面スライド（iPhoneメモ帳寄り、本めくりは無し）。
    戻り操作（navigateBack・各画面の←ボタン・パンくずで上位へ）は新画面が左から、
-   それ以外の進み操作は右からスライドインする。App.tsxのnavDirectionに応じてどちらかのクラスを付ける */
+   それ以外の進み操作は右からスライドインする。App.tsxのnavDirectionに応じたクラスを、各画面の
+   ルート要素（.screen）に直接付ける */
 .slide-in-left { animation: slide-in-left 200ms ease-out; }
 .slide-in-right { animation: slide-in-right 200ms ease-out; }
 @keyframes slide-in-left {

@@ -18,10 +18,11 @@ export function isTap(moved: number, dragging: boolean, dragMode: boolean): bool
   return !dragging && !dragMode && moved < 10;
 }
 
-// 背景（カードやボタンの上ではない何もないところ）での右フリックを「前の画面に戻る」操作とみなすかどうかの判定。
-// iOS風の戻るジェスチャー。App.tsxのルート要素でpointerdown〜pointerupの座標・経過時間から呼ぶ。
-// dx: 水平移動量（px、右が正）。dy: 垂直移動量（px）。elapsedMs: pointerdownからpointerupまでの経過時間（ms）。
-// 60pxを超える右移動・横方向優勢（|dx| > 1.5×|dy|）・600ms以内の3条件をすべて満たしたときだけ戻る。
-export function isBackFlick(dx: number, dy: number, elapsedMs: number): boolean {
-  return dx > 60 && Math.abs(dx) > 1.5 * Math.abs(dy) && elapsedMs <= 600;
+// 背景（カードやボタンの上ではない何もないところ）での右フリック追従スワイプ（iOS風の戻るジェスチャー）を、
+// 指を離した時点で「戻る操作として完了させる」か判定する。追従中は.screenが指に追従して動いており
+// （App.tsxのonMainPointerMove）、この関数はpointerup時点の最終dxと速度だけから完了/スナップバックを決める。
+// dx: pointerdownからの水平移動量（px、右が正）。vx: 速度（px/ms、pointerdownから指を離すまでの平均）。
+// 90pxを超えて動いていれば速度に関わらず完了。50pxを超えていて素早い（vx>0.5）場合も完了。それ以外はスナップバック。
+export function shouldCompleteBack(dx: number, vx: number): boolean {
+  return dx > 90 || (dx > 50 && vx > 0.5);
 }

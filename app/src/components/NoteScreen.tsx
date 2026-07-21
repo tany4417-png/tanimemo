@@ -14,6 +14,8 @@ const HISTORY_COALESCE_MS = 600;
 
 type Props = {
   syncBar: React.ReactNode;
+  // 画面切替（list/note/settings/trash）のスライドインクラス（slide-in-left/right）。ルート要素(.screen)に直接付ける
+  slideClass: string;
   note: Note;
   startEditing?: boolean;
   onChange: (patch: { body?: string; tags?: string[]; importance?: 0 | 1 | 2 | 3 }) => void;
@@ -25,7 +27,7 @@ type Props = {
   onAttached?: () => void;
 };
 
-export function NoteScreen({ syncBar, note, startEditing, onChange, onDelete, onBack, onMoveNote, onAttached }: Props) {
+export function NoteScreen({ syncBar, slideClass, note, startEditing, onChange, onDelete, onBack, onMoveNote, onAttached }: Props) {
   const [editing, setEditing] = useState(startEditing ?? false);
   const [draft, setDraft] = useState(note.body);
   const [movePickerOpen, setMovePickerOpen] = useState(false);
@@ -150,7 +152,7 @@ export function NoteScreen({ syncBar, note, startEditing, onChange, onDelete, on
   }
 
   return (
-    <div className="note">
+    <div className={`note screen ${slideClass}`}>
       <div className="list-header">
         {syncBar}
         <div className="toolbar">
@@ -218,26 +220,29 @@ export function NoteScreen({ syncBar, note, startEditing, onChange, onDelete, on
           ))}
         </div>
       )}
-      <input
-        key={note.id}
-        className="tags-input"
-        placeholder="タグ（カンマ区切り）"
-        defaultValue={note.tags.join(", ")}
-        onBlur={(e) => onChange({ tags: e.target.value.split(",").map((s) => s.trim()).filter(Boolean) })}
-      />
-      {editing ? (
-        <textarea
-          ref={textareaRef}
-          className="editor"
-          autoFocus
-          value={draft}
-          onChange={onDraftChange}
-          onPaste={onEditorPaste}
+      {/* ヘッダー（・移動ピッカー）以外＝タグ入力・本文・ギャラリーだけがスクロール＆バウンドする */}
+      <div className="screen-body">
+        <input
+          key={note.id}
+          className="tags-input"
+          placeholder="タグ（カンマ区切り）"
+          defaultValue={note.tags.join(", ")}
+          onBlur={(e) => onChange({ tags: e.target.value.split(",").map((s) => s.trim()).filter(Boolean) })}
         />
-      ) : (
-        <div className="note-view" onClick={clickView} dangerouslySetInnerHTML={{ __html: html }} />
-      )}
-      <Gallery noteId={note.id} />
+        {editing ? (
+          <textarea
+            ref={textareaRef}
+            className="editor"
+            autoFocus
+            value={draft}
+            onChange={onDraftChange}
+            onPaste={onEditorPaste}
+          />
+        ) : (
+          <div className="note-view" onClick={clickView} dangerouslySetInnerHTML={{ __html: html }} />
+        )}
+        <Gallery noteId={note.id} />
+      </div>
     </div>
   );
 }
