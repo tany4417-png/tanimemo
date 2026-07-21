@@ -221,8 +221,17 @@ button.danger { background: var(--vermilion); border-color: var(--vermilion); co
 .note-view input[type="checkbox"] { width: 1.1em; height: 1.1em; }
 .gallery { display: flex; gap: 8px; flex-wrap: wrap; padding: 10px 0; }
 .thumb { width: 120px; height: 120px; object-fit: cover; border-radius: 8px; border: 1px solid var(--rule); cursor: pointer; user-select: none; }
-.overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.85); display: flex; align-items: center; justify-content: center; z-index: 10; }
-.overlay img { max-width: 96vw; max-height: 96vh; user-select: none; }
+/* 原寸表示。iPhone(PWA)ではvh基準だと画面全高にノッチ・ホームバー領域が含まれ、中央寄せした
+   画像の上下端がそこに掛かって見切れるため、セーフエリア＋最低限の余白をpaddingで確保し、
+   画像はその内側(100%)に収める */
+.overlay {
+  position: fixed; inset: 0; background: rgba(0, 0, 0, 0.85);
+  display: flex; align-items: center; justify-content: center; z-index: 10;
+  padding: max(10px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right))
+    max(10px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left));
+  box-sizing: border-box;
+}
+.overlay img { max-width: 100%; max-height: 100%; user-select: none; }
 
 /* ==================== 設定/ゴミ箱 ==================== */
 .settings { max-width: 420px; }
