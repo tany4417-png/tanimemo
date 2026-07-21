@@ -1,15 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { useLiveQuery } from "dexie-react-hooks";
-import { addImageFromBlob, getImageBlob } from "../lib/attachments";
+import { addImageFromBlob } from "../lib/attachments";
 import { accentClassFor } from "../lib/colors";
-import { downloadUrlSpec } from "../lib/dragout";
-import { mimeToExt } from "../lib/export";
 import { flattenFolderTree, listAllFolders } from "../lib/folders";
 import { canRedo, canUndo, histInit, histPush, histRedo, histUndo, type Hist } from "../lib/history";
 import { renderMarkdown, toggleCheckbox } from "../lib/markdown";
-import type { AttachmentMeta, Note } from "../lib/types";
+import type { Note } from "../lib/types";
 import { BackIcon, ImageIcon, RedoIcon, UndoIcon } from "./icons";
+import { ImageOverlay, onImageDragStart } from "./ImageOverlay";
 import { useAttachmentUrls } from "./useAttachmentUrls";
 
 // 編集中の変更確定までの猶予（ms）。この間隔だけ入力が途切れたら、その時点のdraftを1スナップショットとしてhistoryへ積む
@@ -284,7 +282,6 @@ export function Gallery({
   // 未取得（オフライン等でfetchが失敗した添付）はurlsに入らず、その添付はドラッグアウト無効のまま表示される
   const { urls: fullUrls } = useAttachmentUrls(noteId, undefined, { thumb: false });
   const [fullId, setFullId] = useState<string | null>(null);
-  const fullUrl = useFullImageUrl(fullId);
 
   return (
     <>
@@ -310,74 +307,11 @@ export function Gallery({
             )
         )}
       </div>
-      {/* 原寸表示はbody直下へポータルで描画する。バックスワイプのキャンセルで.screenに
-          transform（translateX(0px)）が残ると、fixedの基準が.screenにすり替わり
-          .screen-bodyのoverflowでヘッダー分だけ上が見切れるため（2026-07-21 iPhoneで発覚） */}
-      {fullId &&
-        fullUrl &&
-        createPortal(
-          <div className="overlay" onClick={() => setFullId(null)}>
-            <img
-              src={fullUrl}
-              draggable
-              onDragStart={(e) => {
-                const meta = metas.find((mm) => mm.id === fullId);
-                if (meta) onImageDragStart(e, meta, fullUrl);
-              }}
-              alt=""
-            />
-            {onDeleteAttachment && (
-              <button
-                className="danger overlay-delete"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  const id = fullId;
-                  setFullId(null);
-                  onDeleteAttachment(id);
-                }}
-              >
-                この画像を削除
-              </button>
-            )}
-          </div>,
-          document.body
-        )}
+      {/* 原寸表示（ズーム対応・body直下ポータル）はImageOverlayに分離 */}
+      {(() => {
+        const m = fullId ? metas.find((mm) => mm.id === fullId) : undefined;
+        return m ? <ImageOverlay att={m} onClose={() => setFullId(null)} onDelete={onDeleteAttachment} /> : null;
+      })()}
     </>
   );
-}
-
-// ギャラリー画像のdragstart（同期処理）。ChromiumのDownloadURL形式でOS側へファイル生成の手がかりを渡す。
-// fullUrl未取得（オフライン等）のときは何もしない（draggable={false}にしているので通常はここへ来ない）
-function onImageDragStart(e: React.DragEvent<HTMLImageElement>, att: AttachmentMeta, fullUrl: string | undefined): void {
-  if (!fullUrl) return;
-  const filename = `タニメモ-画像-${att.id.slice(-6)}.${mimeToExt(att.mime)}`;
-  e.dataTransfer.setData("DownloadURL", downloadUrlSpec(att.mime, filename, fullUrl));
-  e.dataTransfer.setData("text/uri-list", fullUrl);
-  e.dataTransfer.effectAllowed = "copy";
-}
-
-// 原寸オーバーレイ表示中だけ、対象1件の本体blobを取りに行く（サムネと違い全件を先読みしない）
-function useFullImageUrl(id: string | null): string | null {
-  const [url, setUrl] = useState<string | null>(null);
-  useEffect(() => {
-    if (!id) {
-      setUrl(null);
-      return;
-    }
-    let alive = true;
-    let created: string | null = null;
-    void (async () => {
-      const token = localStorage.getItem("tanimemo.token") ?? "";
-      const blob = await getImageBlob(id, token);
-      if (alive && blob) {
-        created = URL.createObjectURL(blob);
-        setUrl(created);
-      }
-    })();
-    return () => {
-      alive = false;
-      if (created) URL.revokeObjectURL(created);
-    };
-  }, [id]);
-  return url;
 }

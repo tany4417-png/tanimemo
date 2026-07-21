@@ -230,8 +230,28 @@ button.danger { background: var(--vermilion); border-color: var(--vermilion); co
   padding: max(10px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right))
     max(10px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left));
   box-sizing: border-box;
+  /* 独自のピンチ・パン（ImageOverlay）で処理するため、ブラウザ既定のタッチ動作は全部止める。
+     拡大した画像がpaddingの外へはみ出さないようclipもする */
+  touch-action: none;
+  overflow: hidden;
 }
-.overlay img { max-width: 100%; max-height: 100%; user-select: none; }
+.overlay img { max-width: 100%; max-height: 100%; user-select: none; will-change: transform; }
+/* 原寸表示の右上✕。ズーム操作と共存させるため、画像タップでは閉じない代わりに明示の閉じるボタンを置く */
+.overlay-close {
+  position: absolute;
+  top: max(16px, env(safe-area-inset-top));
+  right: max(16px, env(safe-area-inset-right));
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.22);
+  color: #fff;
+  font-size: 18px;
+  line-height: 1;
+  padding: 0;
+  cursor: pointer;
+}
 /* 原寸表示の下部中央の削除ボタン。背景タップ（閉じる）と誤爆しないよう十分な高さのタップ領域を確保する */
 .overlay-delete {
   position: absolute;
