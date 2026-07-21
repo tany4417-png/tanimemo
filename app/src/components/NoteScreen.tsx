@@ -156,12 +156,13 @@ export function NoteScreen({ syncBar, slideClass, note, startEditing, onChange, 
       <div className="list-header">
         {syncBar}
         <div className="toolbar">
-          {/* 1段目（オーナー指定配置）: 戻る・写真・移動…・編集/保存・削除を1列で並べる。
+          {/* 1段目（オーナー指定配置）: 戻るだけ左、写真・移動…・編集/保存・削除は右揃え。
               画面幅で位置が変わらないよう常にこの並び固定 */}
           <div className="note-toolbar-row">
             <button className="icon-btn" onClick={onBack} aria-label="戻る">
               <BackIcon />
             </button>
+            <span className="spacer" />
             <button className="icon-btn" aria-label="写真を添付" onClick={() => fileInputRef.current?.click()}>
               <ImageIcon />
             </button>
