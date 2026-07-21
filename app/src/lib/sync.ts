@@ -25,10 +25,10 @@ export async function runSync(
   options?: { full?: boolean }
 ): Promise<SyncResult> {
   // 旧バージョンのクライアントがfolders配列を無視したままlastSyncだけ進めてしまうと、新バージョンに
-  // 更新してもサーバーは「送信済み」と判断し、以後foldersが二度と届かない。fullResyncV3フラグが
+  // 更新してもサーバーは「送信済み」と判断し、以後foldersが二度と届かない。fullResyncV4フラグが
   // 無い（＝このロジック導入後まだ一度も全量同期していない）端末では、通常呼び出しでも一度だけ
   // since=0の全量同期に切り替えて取りこぼしを回収する。適用側はLWWなので全量再受信しても安全
-  const fullResyncDone = (await db.meta.get("fullResyncV3")) !== undefined;
+  const fullResyncDone = (await db.meta.get("fullResyncV4")) !== undefined;
   const full = options?.full === true || !fullResyncDone;
   const since = full ? 0 : Number((await db.meta.get("lastSync"))?.value ?? 0);
 
@@ -114,7 +114,7 @@ export async function runSync(
       if (!cur || fl.updatedAt >= cur.updatedAt) await db.folders.put({ ...fl, orderKey: fl.orderKey ?? null, dirty: 0 });
     }
     await db.meta.put({ key: "lastSync", value: data.now });
-    if (full) await db.meta.put({ key: "fullResyncV3", value: 1 });
+    if (full) await db.meta.put({ key: "fullResyncV4", value: 1 });
 
     // サーバーで既にpurge済みのidは、上のdirtyクリアや受信適用で幽霊行が
     // 残っていてもここで物理削除して上書きする（削除の伝達漏れ防止・Fix2）。

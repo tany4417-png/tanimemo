@@ -19,7 +19,7 @@ export async function collectDiagnostics(): Promise<Diagnostics> {
     db.attachments.toArray(),
     db.attachmentBlobs.count(),
     db.meta.get("lastSync"),
-    db.meta.get("fullResyncV3"),
+    db.meta.get("fullResyncV4"),
   ]);
 
   return {

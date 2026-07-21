@@ -10,7 +10,7 @@ beforeEach(async () => {
 });
 
 describe("collectDiagnostics", () => {
-  it("notes/folders/attachmentsの件数とlastSync・fullResyncV3の状態をまとめて返す", async () => {
+  it("notes/folders/attachmentsの件数とlastSync・fullResyncV4の状態をまとめて返す", async () => {
     // 未同期・データ無しの初期状態
     const empty = await collectDiagnostics();
     expect(empty.version).toBe(__APP_VERSION__);
@@ -21,14 +21,14 @@ describe("collectDiagnostics", () => {
     expect(empty.attachments.metaCount).toBe(0);
     expect(empty.attachments.blobCount).toBe(0);
 
-    // データを作り、lastSync・fullResyncV3も立てた状態
+    // データを作り、lastSync・fullResyncV4も立てた状態
     const a = await createNote("a");
     await createNote("b");
     await softDeleteNote(a.id); // aはゴミ箱行き（deleted=1のまま）。有効メモ数からは外れる
     await createFolder("f1", null);
     await addImageFromBlob("b", new Blob([new Uint8Array([1])], { type: "image/png" }));
     await db.meta.put({ key: "lastSync", value: 123456 });
-    await db.meta.put({ key: "fullResyncV3", value: 1 });
+    await db.meta.put({ key: "fullResyncV4", value: 1 });
 
     const diag = await collectDiagnostics();
     expect(diag.lastSync).toBe(123456);

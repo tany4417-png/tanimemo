@@ -10,7 +10,7 @@ function formatDiagnosticsText(d: Diagnostics): string {
   return [
     `バージョン: ${d.version}`,
     `最終同期: ${lastSync}`,
-    `全量同期(fullResyncV3): ${d.fullResyncDone ? "実施済み" : "未実施"}`,
+    `全量同期(fullResyncV4): ${d.fullResyncDone ? "実施済み" : "未実施"}`,
     `メモ: 総数${d.notes.total} / ゴミ箱${d.notes.trashCount} / dirty${d.notes.dirty}`,
     `フォルダ: 総数${d.folders.total} / dirty${d.folders.dirty}`,
     `添付: メタ${d.attachments.metaCount} / dirty${d.attachments.dirty} / ローカル実体${d.attachments.blobCount}`,
@@ -80,7 +80,7 @@ export function Settings({ syncBar, slideClass, token, onSave, onBack, onExport,
               <div className="diag-body">
                 <p>バージョン: {diagnostics.version}</p>
                 <p>最終同期: {diagnostics.lastSync ? new Date(diagnostics.lastSync).toLocaleString("ja-JP") : "未同期"}</p>
-                <p>全量同期(fullResyncV3): {diagnostics.fullResyncDone ? "実施済み" : "未実施"}</p>
+                <p>全量同期(fullResyncV4): {diagnostics.fullResyncDone ? "実施済み" : "未実施"}</p>
                 <p>メモ: 総数{diagnostics.notes.total} / ゴミ箱{diagnostics.notes.trashCount} / dirty{diagnostics.notes.dirty}</p>
                 <p>フォルダ: 総数{diagnostics.folders.total} / dirty{diagnostics.folders.dirty}</p>
                 <p>
