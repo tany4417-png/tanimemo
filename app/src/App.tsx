@@ -5,17 +5,39 @@ import { NoteScreen } from "./components/NoteScreen";
 import { Settings } from "./components/Settings";
 import { SyncStatus } from "./components/SyncStatus";
 import { TrashScreen } from "./components/TrashScreen";
+import { popRedo, popUndo, pushAction, type ActionStacks } from "./lib/actions";
 import { addImageFromBlob } from "./lib/attachments";
 import { db } from "./lib/db";
 import { exportZip, localYmd } from "./lib/export";
-import { createFolder, deleteFolderWithContents, folderPath, listChildFolders, moveFolder, moveNote, renameFolder, reorderFolder, reorderNote, repairOrphans } from "./lib/folders";
+import {
+  createFolder,
+  deleteFolderWithContents,
+  folderPath,
+  listChildFolders,
+  moveFolder,
+  moveNote,
+  renameFolder,
+  reorderFolder,
+  reorderNote,
+  repairOrphans,
+  restoreFolderWithContents,
+  updateFolder,
+} from "./lib/folders";
 import { isBackFlick } from "./lib/gesture";
-import { allTags, createNote, listActiveNotes, purgeExpiredTrashLocal, softDeleteNote, updateNote, type NotePatch } from "./lib/notes";
+import { allTags, createNote, listActiveNotes, purgeExpiredTrashLocal, restoreNote, softDeleteNote, updateNote, type NotePatch } from "./lib/notes";
 import type { ReorderPlan } from "./lib/reorder";
 import { filterByTags, searchNotes, sortNotes, type SortMode } from "./lib/sort";
 import { runSync } from "./lib/sync";
 
 type View = { name: "list" } | { name: "note"; id: string; isNew?: boolean } | { name: "settings" } | { name: "trash" };
+
+// メモ内容の変更（App onChangeハンドラ経由）の操作ラベル。undo/redoボタンの表示にのみ使う
+function labelForNotePatch(patch: NotePatch): string {
+  if ("importance" in patch) return "重要度を変更";
+  if ("tags" in patch) return "タグを変更";
+  if ("body" in patch) return "本文を変更";
+  return "メモを編集";
+}
 
 export default function App() {
   const [view, setView] = useState<View>({ name: "list" });
@@ -38,6 +60,8 @@ export default function App() {
   // 背景の右フリック（iOS風の戻るジェスチャー）検出用。pointerdown時の座標・時刻を覚えておき、
   // pointerupでisBackFlickへ渡す。カード等の操作要素上のpointerdownではnullのままにして無効化する
   const backSwipeStart = useRef<{ x: number; y: number; t: number } | null>(null);
+  // グローバルundo/redo（削除・移動・並べ替え・内容変更の操作履歴）。メモリ内のみ＝リロードで消える
+  const [stacks, setStacks] = useState<ActionStacks>({ past: [], future: [] });
 
   const notes = useLiveQuery(listActiveNotes, [], []);
   const pending = useLiveQuery(
@@ -79,6 +103,43 @@ export default function App() {
     window.clearTimeout(timer.current);
     timer.current = window.setTimeout(() => void syncNow(), 3000);
   }, [syncNow]);
+
+  // 操作（削除・移動・並べ替え・内容変更）を1つ実行し、履歴へ積んで同期をスケジュールする共通ヘルパ。
+  // 逆操作に必要な事前状態（スナップショット）はdoFn/undoFnを組み立てる呼び出し側で、操作前に控えておくこと
+  const runAction = useCallback(
+    async (label: string, doFn: () => Promise<void>, undoFn: () => Promise<void>) => {
+      await doFn();
+      setStacks((s) => pushAction(s, { label, undo: undoFn, redo: doFn }));
+      scheduleSync();
+    },
+    [scheduleSync]
+  );
+
+  // 取り消し。対象の実体が同期・purgeで既に消えていた場合は例外を握りつぶして何もしない
+  const onUndo = useCallback(async () => {
+    const result = popUndo(stacks);
+    if (!result) return;
+    setStacks(result.stacks);
+    try {
+      await result.action.undo();
+    } catch {
+      // 実体が既に消えている等はここで握りつぶす（仕様）
+    }
+    scheduleSync();
+  }, [stacks, scheduleSync]);
+
+  // やり直し。取り消しと同様、対象の実体が既に消えていた場合は例外を握りつぶして何もしない
+  const onRedo = useCallback(async () => {
+    const result = popRedo(stacks);
+    if (!result) return;
+    setStacks(result.stacks);
+    try {
+      await result.action.redo();
+    } catch {
+      // 実体が既に消えている等はここで握りつぶす（仕様）
+    }
+    scheduleSync();
+  }, [stacks, scheduleSync]);
 
   useEffect(() => () => window.clearTimeout(timer.current), []);
 
@@ -217,52 +278,144 @@ export default function App() {
   }, [folderPathList, scheduleSync]);
 
   const onDeleteFolder = useCallback(
-    async (id: string) => {
-      await deleteFolderWithContents(id);
-      scheduleSync();
+    (id: string) => {
+      void runAction(
+        "フォルダを削除",
+        async () => {
+          await deleteFolderWithContents(id);
+        },
+        async () => {
+          await restoreFolderWithContents(id);
+        }
+      );
     },
-    [scheduleSync]
+    [runAction]
   );
 
+  const onRestoreNoteFromTrash = useCallback(
+    (id: string) => {
+      void runAction(
+        "メモを復元",
+        async () => {
+          await restoreNote(id);
+        },
+        async () => {
+          await softDeleteNote(id);
+        }
+      );
+    },
+    [runAction]
+  );
+
+  const onRestoreFolderFromTrash = useCallback(
+    (id: string) => {
+      void runAction(
+        "フォルダを復元",
+        async () => {
+          await restoreFolderWithContents(id);
+        },
+        async () => {
+          await deleteFolderWithContents(id);
+        }
+      );
+    },
+    [runAction]
+  );
+
+  // メモ移動（D&D・移動ピッカー共通）。移動前のfolderIdを控えておき、undoで戻す
   const onMoveNote = useCallback(
-    async (noteId: string, folderId: string | null) => {
-      await moveNote(noteId, folderId);
-      scheduleSync();
+    (noteId: string, folderId: string | null) => {
+      const before = notes.find((n) => n.id === noteId)?.folderId ?? null;
+      void runAction(
+        "メモを移動",
+        async () => {
+          await moveNote(noteId, folderId);
+        },
+        async () => {
+          await moveNote(noteId, before);
+        }
+      );
     },
-    [scheduleSync]
+    [notes, runAction]
   );
 
+  // フォルダ移動（D&D）。moveFolderがfalse（自分自身への移動・子孫への移動など無効な操作）を返した場合は
+  // 何も起きていないので履歴に積まない・同期もしない（falseになるケースは握りつぶしてよい仕様）
   const onMoveFolder = useCallback(
-    async (id: string, parentId: string | null) => {
-      const moved = await moveFolder(id, parentId);
-      if (moved) scheduleSync();
+    (id: string, parentId: string | null) => {
+      void (async () => {
+        const cur = await db.folders.get(id);
+        const before = cur?.parentId ?? null;
+        const moved = await moveFolder(id, parentId);
+        if (!moved) return;
+        setStacks((s) =>
+          pushAction(s, {
+            label: "フォルダを移動",
+            undo: async () => {
+              await moveFolder(id, before);
+            },
+            redo: async () => {
+              await moveFolder(id, parentId);
+            },
+          })
+        );
+        scheduleSync();
+      })();
     },
     [scheduleSync]
   );
 
   const onReorderNote = useCallback(
-    async (plan: ReorderPlan<{ id: string; orderKey: number | null }>) => {
-      if (plan.normalized) {
-        for (const item of plan.normalized) await reorderNote(item.id, item.orderKey as number);
-      }
-      await reorderNote(plan.targetId, plan.targetOrderKey);
-      // 手動で並べ替えたら、現在のソートがmanualでなければ自動で切り替える（手動順が見える状態にする）
-      if (sort !== "manual") setSort("manual");
-      scheduleSync();
+    (plan: ReorderPlan<{ id: string; orderKey: number | null }>) => {
+      // 適用前のorderKeyを控える（normalized適用がある場合は対象全件、無ければドラッグ対象のみ）
+      const beforeOf = (id: string) => notes.find((n) => n.id === id)?.orderKey ?? null;
+      const beforeNormalized = plan.normalized?.map((item) => ({ id: item.id, orderKey: beforeOf(item.id) }));
+      const beforeTarget = beforeOf(plan.targetId);
+      void runAction(
+        "メモの並べ替え",
+        async () => {
+          if (plan.normalized) {
+            for (const item of plan.normalized) await reorderNote(item.id, item.orderKey as number);
+          }
+          await reorderNote(plan.targetId, plan.targetOrderKey);
+          // 手動で並べ替えたら、現在のソートがmanualでなければ自動で切り替える（手動順が見える状態にする）
+          if (sort !== "manual") setSort("manual");
+        },
+        async () => {
+          // 元のorderKeyへ一括書き戻す（nullだった場合もあるため、number限定のreorderNoteでなくupdateNoteを使う）
+          if (beforeNormalized) {
+            for (const item of beforeNormalized) await updateNote(item.id, { orderKey: item.orderKey });
+          }
+          await updateNote(plan.targetId, { orderKey: beforeTarget });
+        }
+      );
     },
-    [sort, scheduleSync]
+    [notes, sort, runAction]
   );
 
   // フォルダの並べ替えはソートモードに関係なく常に有効
   const onReorderFolder = useCallback(
-    async (plan: ReorderPlan<{ id: string; orderKey: number | null }>) => {
-      if (plan.normalized) {
-        for (const item of plan.normalized) await reorderFolder(item.id, item.orderKey as number);
-      }
-      await reorderFolder(plan.targetId, plan.targetOrderKey);
-      scheduleSync();
+    (plan: ReorderPlan<{ id: string; orderKey: number | null }>) => {
+      const beforeOf = (id: string) => childFolders.find((f) => f.id === id)?.orderKey ?? null;
+      const beforeNormalized = plan.normalized?.map((item) => ({ id: item.id, orderKey: beforeOf(item.id) }));
+      const beforeTarget = beforeOf(plan.targetId);
+      void runAction(
+        "フォルダの並べ替え",
+        async () => {
+          if (plan.normalized) {
+            for (const item of plan.normalized) await reorderFolder(item.id, item.orderKey as number);
+          }
+          await reorderFolder(plan.targetId, plan.targetOrderKey);
+        },
+        async () => {
+          if (beforeNormalized) {
+            for (const item of beforeNormalized) await updateFolder(item.id, { orderKey: item.orderKey });
+          }
+          await updateFolder(plan.targetId, { orderKey: beforeTarget });
+        }
+      );
     },
-    [scheduleSync]
+    [childFolders, runAction]
   );
 
   // 同期バー。一覧・メモ・設定・ゴミ箱それぞれのヘッダー（.list-header）内にまとめて表示するため、
@@ -272,6 +425,10 @@ export default function App() {
       status={status}
       pending={pending}
       lastSync={lastSync}
+      canUndo={stacks.past.length > 0}
+      canRedo={stacks.future.length > 0}
+      onUndo={() => void onUndo()}
+      onRedo={() => void onRedo()}
       onSync={() => void syncNow()}
       onSettings={() => goForward({ name: "settings" })}
     />
@@ -297,9 +454,16 @@ export default function App() {
             onQuery={setQuery}
             onOpen={(id) => goForward({ name: "note", id })}
             onCreate={onCreate}
-            onDelete={async (id) => {
-              await softDeleteNote(id);
-              scheduleSync();
+            onDelete={(id) => {
+              void runAction(
+                "メモを削除",
+                async () => {
+                  await softDeleteNote(id);
+                },
+                async () => {
+                  await restoreNote(id);
+                }
+              );
             }}
             isBrowsingFolder={isBrowsingFolder}
             currentFolderId={currentFolderId}
@@ -323,17 +487,35 @@ export default function App() {
             syncBar={syncBar}
             note={current}
             startEditing={view.name === "note" && view.isNew === true}
-            onChange={async (patch) => {
-              await updateNote(current.id, patch as NotePatch);
-              scheduleSync();
+            onChange={(patch) => {
+              // 逆操作に必要な旧値は、変更対象のフィールドだけをcurrentからスナップショットする
+              const before: NotePatch = {};
+              if ("body" in patch) before.body = current.body;
+              if ("tags" in patch) before.tags = current.tags;
+              if ("importance" in patch) before.importance = current.importance;
+              void runAction(
+                labelForNotePatch(patch),
+                async () => {
+                  await updateNote(current.id, patch as NotePatch);
+                },
+                async () => {
+                  await updateNote(current.id, before);
+                }
+              );
             }}
-            onDelete={async () => {
-              await softDeleteNote(current.id);
-              goForward({ name: "list" });
-              scheduleSync();
+            onDelete={() => {
+              void runAction(
+                "メモを削除",
+                async () => {
+                  await softDeleteNote(current.id);
+                },
+                async () => {
+                  await restoreNote(current.id);
+                }
+              ).then(() => goForward({ name: "list" }));
             }}
             onBack={navigateBack}
-            onMoved={() => scheduleSync()}
+            onMoveNote={onMoveNote}
             onAttached={() => scheduleSync()}
           />
         )}
@@ -362,7 +544,12 @@ export default function App() {
           />
         )}
         {view.name === "trash" && (
-          <TrashScreen syncBar={syncBar} onBack={navigateBack} onRestored={() => scheduleSync()} />
+          <TrashScreen
+            syncBar={syncBar}
+            onBack={navigateBack}
+            onRestoreNote={onRestoreNoteFromTrash}
+            onRestoreFolder={onRestoreFolderFromTrash}
+          />
         )}
       </div>
     </main>

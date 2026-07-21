@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { addImageFromBlob, getImageBlob } from "../lib/attachments";
 import { accentClassFor } from "../lib/colors";
-import { flattenFolderTree, listAllFolders, moveNote } from "../lib/folders";
+import { flattenFolderTree, listAllFolders } from "../lib/folders";
 import { canRedo, canUndo, histInit, histPush, histRedo, histUndo, type Hist } from "../lib/history";
 import { renderMarkdown, toggleCheckbox } from "../lib/markdown";
 import type { Note } from "../lib/types";
@@ -19,12 +19,13 @@ type Props = {
   onChange: (patch: { body?: string; tags?: string[]; importance?: 0 | 1 | 2 | 3 }) => void;
   onDelete: () => void;
   onBack: () => void;
-  onMoved: () => void;
+  // メモの移動（移動ピッカーで選んだ先）。App側でundo登録・同期スケジュールまで面倒を見る
+  onMoveNote: (noteId: string, folderId: string | null) => void;
   // 画像添付が完了したときに呼ばれる（App側でscheduleSyncするためのフック）
   onAttached?: () => void;
 };
 
-export function NoteScreen({ syncBar, note, startEditing, onChange, onDelete, onBack, onMoved, onAttached }: Props) {
+export function NoteScreen({ syncBar, note, startEditing, onChange, onDelete, onBack, onMoveNote, onAttached }: Props) {
   const [editing, setEditing] = useState(startEditing ?? false);
   const [draft, setDraft] = useState(note.body);
   const [movePickerOpen, setMovePickerOpen] = useState(false);
@@ -112,11 +113,10 @@ export function NoteScreen({ syncBar, note, startEditing, onChange, onDelete, on
     setHistoryTick(0);
   }
 
-  async function moveTo(folderId: string | null) {
+  function moveTo(folderId: string | null) {
     if (folderId === note.folderId) return;
-    await moveNote(note.id, folderId);
+    onMoveNote(note.id, folderId);
     setMovePickerOpen(false);
-    onMoved();
   }
 
   function clickView(e: React.MouseEvent<HTMLDivElement>) {

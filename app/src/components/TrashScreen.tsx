@@ -1,18 +1,24 @@
 import { useLiveQuery } from "dexie-react-hooks";
 import { accentClassFor } from "../lib/colors";
-import { listTrashedFolders, restoreFolderWithContents } from "../lib/folders";
+import { listTrashedFolders } from "../lib/folders";
 import { firstLineTitle } from "../lib/markdown";
-import { TRASH_RETENTION_MS, listTrashedNotes, restoreNote } from "../lib/notes";
+import { TRASH_RETENTION_MS, listTrashedNotes } from "../lib/notes";
 import type { Folder, Note } from "../lib/types";
 import { BackIcon, FolderIcon } from "./icons";
 import { CardThumbs } from "./NoteList";
 
-type Props = { syncBar: React.ReactNode; onBack: () => void; onRestored: () => void };
+type Props = {
+  syncBar: React.ReactNode;
+  onBack: () => void;
+  // 復元操作。App側でundo登録（再softDelete/deleteFolderWithContents）・同期スケジュールまで面倒を見る
+  onRestoreNote: (id: string) => void;
+  onRestoreFolder: (id: string) => void;
+};
 
 // メモ・フォルダを新しい順（updatedAt降順）に混在表示するための行
 type TrashRow = { kind: "note"; item: Note } | { kind: "folder"; item: Folder };
 
-export function TrashScreen({ syncBar, onBack, onRestored }: Props) {
+export function TrashScreen({ syncBar, onBack, onRestoreNote, onRestoreFolder }: Props) {
   const trashedNotes = useLiveQuery(listTrashedNotes, [], []);
   const trashedFolders = useLiveQuery(listTrashedFolders, [], []);
   const rows: TrashRow[] = [
@@ -49,13 +55,7 @@ export function TrashScreen({ syncBar, onBack, onRestored }: Props) {
               <div className="card-sub">
                 削除: {new Date(f.updatedAt).toLocaleString("ja-JP")} / 残り{daysLeft}日
               </div>
-              <button
-                className="tint acc-green"
-                onClick={async () => {
-                  await restoreFolderWithContents(f.id);
-                  onRestored();
-                }}
-              >
+              <button className="tint acc-green" onClick={() => onRestoreFolder(f.id)}>
                 復元
               </button>
             </div>
@@ -69,13 +69,7 @@ export function TrashScreen({ syncBar, onBack, onRestored }: Props) {
             <div className="card-sub">
               削除: {new Date(n.updatedAt).toLocaleString("ja-JP")} / 残り{daysLeft}日
             </div>
-            <button
-              className="tint acc-green"
-              onClick={async () => {
-                await restoreNote(n.id);
-                onRestored();
-              }}
-            >
+            <button className="tint acc-green" onClick={() => onRestoreNote(n.id)}>
               復元
             </button>
           </div>

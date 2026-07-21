@@ -160,6 +160,8 @@ button.icon-btn { width: 36px; height: 36px; padding: 0; }
 }
 .syncbar .spacer { flex: 1; }
 .syncbar button { padding: 4px 10px; font-size: 12px; min-height: 28px; }
+/* undo/redo（グローバル操作履歴）はアイコンのみの正方形ボタンに保つ（他の同期バーボタンとpaddingが競合しないよう明示） */
+.syncbar button.icon-btn { width: 28px; height: 28px; min-height: 28px; padding: 0; }
 .dot { width: 9px; height: 9px; border-radius: 50%; background: #6cb06c; } /* 同期成功=緑。パレットに対応トークンが無いため直書きのまま維持 */
 .dot.syncing { background: var(--star); animation: dot-pulse 1.6s ease-in-out infinite; }
 .dot.offline { background: var(--ink-soft); }

@@ -3,9 +3,10 @@ import { db } from "./db";
 import { updateNote } from "./notes";
 import type { Folder, Note } from "./types";
 
-type FolderPatch = Partial<Pick<Folder, "name" | "parentId" | "deleted" | "orderKey">>;
+export type FolderPatch = Partial<Pick<Folder, "name" | "parentId" | "deleted" | "orderKey">>;
 
-async function updateFolder(id: string, patch: FolderPatch): Promise<Folder> {
+// 更新の下請け（App側のundo/redoで、reorderFolderのnumber限定シグネチャでは表せないnull書き戻し等に使う）
+export async function updateFolder(id: string, patch: FolderPatch): Promise<Folder> {
   const cur = await db.folders.get(id);
   if (!cur) throw new Error(`folder not found: ${id}`);
   const next: Folder = { ...cur, ...patch, updatedAt: Date.now(), dirty: 1 };
