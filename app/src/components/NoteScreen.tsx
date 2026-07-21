@@ -236,18 +236,28 @@ export function NoteScreen({ syncBar, slideClass, note, startEditing, onChange, 
         {/* 内容が短くてもラバーバンドさせるため、中身全体を.bounce-areaで1枚ラップする（常にコンテナ＋1pxの高さ） */}
         <div className="bounce-area">
           {editing ? (
-            <textarea
-              ref={textareaRef}
-              className="editor"
-              autoFocus
-              value={draft}
-              onChange={onDraftChange}
-              onPaste={onEditorPaste}
-            />
+            <>
+              {/* 編集中は貼った画像がすぐ見えるよう、ギャラリーを本文入力欄の上に置く（2026-07-21 オーナー要望） */}
+              <Gallery noteId={note.id} />
+              <textarea
+                ref={textareaRef}
+                className="editor"
+                autoFocus
+                value={draft}
+                onChange={onDraftChange}
+                onPaste={onEditorPaste}
+              />
+            </>
           ) : (
-            <div className="note-view" onClick={clickView} dangerouslySetInnerHTML={{ __html: html }} />
+            <>
+              {/* 本文が空のメモでは本文カードを出さない（空の枠だけ残ると小さな入力欄に見えるため）。
+                  閲覧時の並びは文書として読む順を優先し、従来どおり本文→画像のまま */}
+              {note.body.trim() !== "" && (
+                <div className="note-view" onClick={clickView} dangerouslySetInnerHTML={{ __html: html }} />
+              )}
+              <Gallery noteId={note.id} />
+            </>
           )}
-          <Gallery noteId={note.id} />
         </div>
       </div>
     </div>

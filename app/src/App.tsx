@@ -290,8 +290,12 @@ export default function App() {
 
   const onCreate = useCallback(async () => {
     const n = await createNote("", currentFolderId);
-    goForward({ name: "note", id: n.id, isNew: true });
-  }, [currentFolderId, goForward]);
+    // 新規だけはスライドインを再生せず即表示する（2026-07-21 オーナー要望）。スライド中は画面の
+    // 左側から順に見えて「半分ずつ現れる」ように感じられるため。既存メモを開く・戻る等は従来どおり
+    setNavDirection("forward");
+    setSuppressSlideIn(true);
+    setView({ name: "note", id: n.id, isNew: true });
+  }, [currentFolderId]);
 
   // フォルダカードで下の階層へ入る（進み操作＝forward）
   const onOpenFolder = useCallback((id: string | null) => {

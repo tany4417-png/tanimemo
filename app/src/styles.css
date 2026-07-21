@@ -214,12 +214,13 @@ button.danger { background: var(--vermilion); border-color: var(--vermilion); co
 .stars { display: flex; }
 .star { border: none; background: none; color: var(--rule); padding: 4px; font-size: 1.2rem; min-height: 44px; min-width: 44px; }
 .star.on { color: var(--star); }
-.editor { flex: 1; min-height: 55vh; resize: none; line-height: 1.7; }
+/* min-heightは画像ギャラリー等と同居して押し合うときの下限。空きがあればflex:1で画面いっぱいに広がる */
+.editor { flex: 1; min-height: 30vh; resize: none; line-height: 1.7; }
 .note-view { background: var(--card); border: 1px solid var(--rule); border-radius: 10px; padding: 4px 16px; line-height: 1.8; overflow-wrap: break-word; }
 .note-view a { color: var(--indigo); }
 .note-view input[type="checkbox"] { width: 1.1em; height: 1.1em; }
 .gallery { display: flex; gap: 8px; flex-wrap: wrap; padding: 10px 0; }
-.thumb { width: 96px; height: 96px; object-fit: cover; border-radius: 8px; border: 1px solid var(--rule); cursor: pointer; user-select: none; }
+.thumb { width: 120px; height: 120px; object-fit: cover; border-radius: 8px; border: 1px solid var(--rule); cursor: pointer; user-select: none; }
 .overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.85); display: flex; align-items: center; justify-content: center; z-index: 10; }
 .overlay img { max-width: 96vw; max-height: 96vh; user-select: none; }
 
