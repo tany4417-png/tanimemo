@@ -147,7 +147,7 @@ export async function repairOrphans(): Promise<number> {
 }
 
 // repairOrphansと同じ判定で孤児メモ・孤児フォルダの件数だけを数える（修復しない）。
-// 更新後の一回全量同期（sync.tsのfullResyncV3）を試す価値があるか判断するために使う
+// 更新後の一回全量同期（sync.tsのfullResyncV4）を試す価値があるか判断するために使う
 export async function countOrphans(): Promise<number> {
   const { orphanNotes, orphanFolders } = await findOrphans();
   return orphanNotes.length + orphanFolders.length;

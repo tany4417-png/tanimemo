@@ -21,9 +21,9 @@ function okFetch(over: Partial<SyncResponse> = {}) {
 
 describe("runSync", () => {
   it("dirtyなメモだけを送り、dirtyフィールドは含めない", async () => {
-    // full（fullResyncV3未実施時の自動全量）ではなく通常のdirty収集だけを検証したいので、
+    // full（fullResyncV4未実施時の自動全量）ではなく通常のdirty収集だけを検証したいので、
     // 既に全量同期済みの端末を装っておく（Fix1で full時は全行dirtyになる仕様のため）
-    await db.meta.put({ key: "fullResyncV3", value: 1 });
+    await db.meta.put({ key: "fullResyncV4", value: 1 });
     const a = await createNote("a");
     await createNote("b");
     await db.notes.update(a.id, { dirty: 0 as const });
@@ -143,13 +143,13 @@ describe("runSync", () => {
   });
 });
 
-describe("runSync 全量再同期（fullResyncV3）", () => {
-  it("旧バージョンからの更新直後（fullResyncV3フラグが無い）はsince=0で送り、成功後にフラグが立つ", async () => {
+describe("runSync 全量再同期（fullResyncV4）", () => {
+  it("旧バージョンからの更新直後（fullResyncV4フラグが無い）はsince=0で送り、成功後にフラグが立つ", async () => {
     const { f, calls } = okFetch();
     await runSync("tok", f);
     const body = JSON.parse(String(calls[0].init.body));
     expect(body.since).toBe(0);
-    expect((await db.meta.get("fullResyncV3"))?.value).toBeTruthy();
+    expect((await db.meta.get("fullResyncV4"))?.value).toBeTruthy();
   });
 
   it("2回目以降の通常呼び出しはフラグが立っているためlastSyncをsinceに使う", async () => {
@@ -163,7 +163,7 @@ describe("runSync 全量再同期（fullResyncV3）", () => {
   });
 
   it("options.full=trueを渡すと、フラグの有無やlastSyncの値に関わらずsince=0で送る", async () => {
-    await db.meta.put({ key: "fullResyncV3", value: 1 });
+    await db.meta.put({ key: "fullResyncV4", value: 1 });
     await db.meta.put({ key: "lastSync", value: 12345 });
     const { f, calls } = okFetch();
     await runSync("tok", f, { full: true });
@@ -210,7 +210,7 @@ describe("runSync 全量再同期（fullResyncV3）", () => {
   it("2回目以降の通常呼び出しでは全行dirty化は行われず、実際にdirtyな行だけを送る", async () => {
     await createNote("a");
     const { f: f1 } = okFetch();
-    await runSync("tok", f1, { full: true }); // fullResyncV3を立てる（送信済みのdirtyは全部クリアされる）
+    await runSync("tok", f1, { full: true }); // fullResyncV4を立てる（送信済みのdirtyは全部クリアされる）
 
     await createNote("b");
     const { f: f2, calls } = okFetch();
@@ -223,9 +223,9 @@ describe("runSync 全量再同期（fullResyncV3）", () => {
 
 describe("runSync フォルダ", () => {
   it("dirtyなフォルダだけを送り、dirtyフィールドは含めない", async () => {
-    // full（fullResyncV3未実施時の自動全量）ではなく通常のdirty収集だけを検証したいので、
+    // full（fullResyncV4未実施時の自動全量）ではなく通常のdirty収集だけを検証したいので、
     // 既に全量同期済みの端末を装っておく（Fix1で full時は全行dirtyになる仕様のため）
-    await db.meta.put({ key: "fullResyncV3", value: 1 });
+    await db.meta.put({ key: "fullResyncV4", value: 1 });
     const a = await createFolder("a", null);
     await createFolder("b", null);
     await db.folders.update(a.id, { dirty: 0 as const });
