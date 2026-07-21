@@ -745,6 +745,7 @@ export default function App() {
               }
             );
           }}
+          highlightQuery={query}
         />
       )}
       {view.name === "settings" && (

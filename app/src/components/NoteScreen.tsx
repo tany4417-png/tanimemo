@@ -4,6 +4,7 @@ import { addImageFromBlob } from "../lib/attachments";
 import { accentClassFor } from "../lib/colors";
 import { flattenFolderTree, listAllFolders } from "../lib/folders";
 import { canRedo, canUndo, histInit, histPush, histRedo, histUndo, type Hist } from "../lib/history";
+import { highlightMatches } from "../lib/highlight";
 import { renderMarkdown, toggleCheckbox } from "../lib/markdown";
 import type { Note } from "../lib/types";
 import { BackIcon, ImageIcon, RedoIcon, UndoIcon } from "./icons";
@@ -28,9 +29,11 @@ type Props = {
   onAttached?: () => void;
   // 添付1枚の個別削除。App側でundo登録・同期スケジュールまで面倒を見る
   onDeleteAttachment: (attId: string) => void;
+  // 検索から開いたときのハイライト・ジャンプ用クエリ。空なら何もしない
+  highlightQuery?: string;
 };
 
-export function NoteScreen({ syncBar, slideClass, note, startEditing, onChange, onDelete, onBack, onMoveNote, onAttached, onDeleteAttachment }: Props) {
+export function NoteScreen({ syncBar, slideClass, note, startEditing, onChange, onDelete, onBack, onMoveNote, onAttached, onDeleteAttachment, highlightQuery }: Props) {
   const [editing, setEditing] = useState(startEditing ?? false);
   const [draft, setDraft] = useState(note.body);
   const [movePickerOpen, setMovePickerOpen] = useState(false);
@@ -39,6 +42,10 @@ export function NoteScreen({ syncBar, slideClass, note, startEditing, onChange, 
   const flatFolders = useMemo(() => flattenFolderTree(allFolders), [allFolders]);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const viewRef = useRef<HTMLDivElement | null>(null);
+  // ジャンプ（scrollIntoView）は初回表示の1回だけ。チェックボックス切替等でhtmlが変わって
+  // 再ハイライトしても、読んでいる位置を勝手に動かさない
+  const jumpedRef = useRef(false);
 
   // undo/redo履歴。editing中だけ使い、historyRef自体はrefなので更新してもrenderされない。
   // canUndo/canRedoの表示（ボタンのdisabled）を更新するためだけに、値は使わずsetHistoryTickでrenderを誘発する
@@ -51,6 +58,21 @@ export function NoteScreen({ syncBar, slideClass, note, startEditing, onChange, 
       if (coalesceTimer.current) clearTimeout(coalesceTimer.current);
     };
   }, []);
+
+  // 閲覧モードの本文に検索ヒットのハイライトを付け、最初のヒットへスクロールする。
+  // dangerouslySetInnerHTMLはhtmlが変わらない限りDOMを再設定しないため、付けたmarkは再レンダーで消えない。
+  // htmlが変わったとき（チェックボックス切替など）はinnerHTMLが素に戻るので、このeffectが付け直す
+  useEffect(() => {
+    if (editing) return;
+    const root = viewRef.current;
+    const q = (highlightQuery ?? "").trim();
+    if (!root || !q) return;
+    const first = highlightMatches(root, q);
+    if (first && !jumpedRef.current) {
+      jumpedRef.current = true;
+      first.scrollIntoView({ block: "center" });
+    }
+  }, [html, editing, highlightQuery]);
 
   // 変更が続く間はタイマーを延長し、HISTORY_COALESCE_MSだけ途切れたらその時点のdraftを1スナップショットとして積む
   function scheduleSnapshot(next: string) {
@@ -255,7 +277,7 @@ export function NoteScreen({ syncBar, slideClass, note, startEditing, onChange, 
               {/* 本文が空のメモでは本文カードを出さない（空の枠だけ残ると小さな入力欄に見えるため）。
                   閲覧時の並びは文書として読む順を優先し、従来どおり本文→画像のまま */}
               {note.body.trim() !== "" && (
-                <div className="note-view" onClick={clickView} dangerouslySetInnerHTML={{ __html: html }} />
+                <div ref={viewRef} className="note-view" onClick={clickView} dangerouslySetInnerHTML={{ __html: html }} />
               )}
               <Gallery noteId={note.id} onDeleteAttachment={onDeleteAttachment} />
             </>
