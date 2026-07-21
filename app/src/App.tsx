@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { NoteList } from "./components/NoteList";
 import { NoteScreen } from "./components/NoteScreen";
@@ -9,6 +9,7 @@ import { addImageFromBlob } from "./lib/attachments";
 import { db } from "./lib/db";
 import { exportZip, localYmd } from "./lib/export";
 import { createFolder, deleteFolderWithContents, folderPath, listChildFolders, moveFolder, moveNote, renameFolder, reorderFolder, reorderNote, repairOrphans } from "./lib/folders";
+import { isBackFlick } from "./lib/gesture";
 import { allTags, createNote, listActiveNotes, purgeExpiredTrashLocal, softDeleteNote, updateNote, type NotePatch } from "./lib/notes";
 import type { ReorderPlan } from "./lib/reorder";
 import { filterByTags, searchNotes, sortNotes, type SortMode } from "./lib/sort";
@@ -31,6 +32,9 @@ export default function App() {
   const [lastSync, setLastSync] = useState<number | null>(null);
   const timer = useRef<number | undefined>(undefined);
   const syncing = useRef(false);
+  // 背景の右フリック（iOS風の戻るジェスチャー）検出用。pointerdown時の座標・時刻を覚えておき、
+  // pointerupでisBackFlickへ渡す。カード等の操作要素上のpointerdownではnullのままにして無効化する
+  const backSwipeStart = useRef<{ x: number; y: number; t: number } | null>(null);
 
   const notes = useLiveQuery(listActiveNotes, [], []);
   const pending = useLiveQuery(
@@ -130,6 +134,52 @@ export default function App() {
 
   const onOpenFolder = useCallback((id: string | null) => setCurrentFolderId(id), []);
 
+  // 背景の右フリックで戻る先。メモ→一覧、設定→一覧、ゴミ箱→設定、一覧(フォルダ内)→親フォルダ、
+  // 一覧(ルート)→何もしない。folderPathListはルート→現在フォルダの順の祖先列なので、
+  // 末尾の1つ手前が親フォルダ（無ければ最上位でnull）
+  const navigateBack = useCallback(() => {
+    if (view.name === "note") {
+      setView({ name: "list" });
+      return;
+    }
+    if (view.name === "settings") {
+      setView({ name: "list" });
+      return;
+    }
+    if (view.name === "trash") {
+      setView({ name: "settings" });
+      return;
+    }
+    if (view.name === "list" && currentFolderId !== null) {
+      const parent = folderPathList.length >= 2 ? folderPathList[folderPathList.length - 2].id : null;
+      setCurrentFolderId(parent);
+    }
+  }, [view, currentFolderId, folderPathList]);
+
+  // 背景の右フリック検出（iOS風の戻るジェスチャー）。カード・ボタン等の操作要素上のpointerdownは
+  // closestで除外し、既存のスワイプ・D&D・タップ操作と干渉しないようにする
+  const onMainPointerDown = useCallback((e: ReactPointerEvent<HTMLElement>) => {
+    const target = e.target as HTMLElement;
+    if (target.closest(".card, .swipe-wrap, button, a, input, textarea, select, .breadcrumb, .tagbar, .overlay")) {
+      backSwipeStart.current = null;
+      return;
+    }
+    backSwipeStart.current = { x: e.clientX, y: e.clientY, t: Date.now() };
+  }, []);
+
+  const onMainPointerUp = useCallback(
+    (e: ReactPointerEvent<HTMLElement>) => {
+      const start = backSwipeStart.current;
+      backSwipeStart.current = null;
+      if (!start) return;
+      const dx = e.clientX - start.x;
+      const dy = e.clientY - start.y;
+      const elapsedMs = Date.now() - start.t;
+      if (isBackFlick(dx, dy, elapsedMs)) navigateBack();
+    },
+    [navigateBack]
+  );
+
   const onCreateFolder = useCallback(async () => {
     const name = prompt("新しいフォルダ名");
     if (!name || !name.trim()) return;
@@ -208,7 +258,7 @@ export default function App() {
   );
 
   return (
-    <main className="app">
+    <main className="app" onPointerDown={onMainPointerDown} onPointerUp={onMainPointerUp}>
       {/* 画面切替（list/note/settings/trash）ごとにkeyを変えてフェード＋スライドで再マウントさせる。DOM構造変更はこのラッパのみ */}
       <div className="view-transition" key={view.name}>
         {view.name === "list" && (

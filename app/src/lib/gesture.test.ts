@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isTap, shouldOpenSwipe } from "./gesture";
+import { isBackFlick, isTap, shouldOpenSwipe } from "./gesture";
 
 describe("shouldOpenSwipe", () => {
   it("40pxを超えて左に動けば開いた状態にする", () => {
@@ -34,5 +34,27 @@ describe("isTap", () => {
 
   it("ドラッグモードに入っていた場合はタップとみなさない", () => {
     expect(isTap(2, false, true)).toBe(false);
+  });
+});
+
+describe("isBackFlick", () => {
+  it("右方向に素早く十分な距離動けば戻るフリックとみなす", () => {
+    expect(isBackFlick(80, 5, 300)).toBe(true);
+  });
+
+  it("右移動が60px以下なら戻るフリックとみなさない", () => {
+    expect(isBackFlick(50, 2, 300)).toBe(false);
+  });
+
+  it("縦方向の移動が大きい斜め方向は戻るフリックとみなさない", () => {
+    expect(isBackFlick(80, 60, 300)).toBe(false);
+  });
+
+  it("600msを超えてゆっくり動いた場合は戻るフリックとみなさない", () => {
+    expect(isBackFlick(80, 5, 700)).toBe(false);
+  });
+
+  it("左方向の移動では戻るフリックとみなさない", () => {
+    expect(isBackFlick(-80, 5, 300)).toBe(false);
   });
 });
