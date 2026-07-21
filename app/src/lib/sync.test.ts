@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { addImageFromBlob } from "./attachments";
+import { addImageFromBlob, softDeleteAttachment } from "./attachments";
 import { db, resetDbForTests } from "./db";
 import { createFolder } from "./folders";
 import { createNote, updateNote } from "./notes";
@@ -20,6 +20,20 @@ function okFetch(over: Partial<SyncResponse> = {}) {
 }
 
 describe("runSync", () => {
+  it("削除済み(deleted=1)の添付はblobをPUTで再送せず、tombstoneはPOSTで送る", async () => {
+    // PUTを再送すると、サーバー側でメタ行が「生存・現在時刻」で上書きされ、同じ同期でpushする
+    // 削除tombstoneがLWWで負けて削除済み添付が復活する（2026-07-21 実バグの回帰テスト）
+    await db.meta.put({ key: "fullResyncV4", value: 1 });
+    const meta = await addImageFromBlob("N1", new Blob([new Uint8Array([1])], { type: "image/png" }));
+    await softDeleteAttachment(meta.id);
+    const { f, calls } = okFetch();
+    await runSync("tok", f);
+    const puts = calls.filter((c) => c.init.method === "PUT");
+    expect(puts).toHaveLength(0);
+    const body = JSON.parse(String(calls.find((c) => c.url === "/api/sync")?.init.body));
+    expect(body.attachments.some((a: { id: string; deleted: 0 | 1 }) => a.id === meta.id && a.deleted === 1)).toBe(true);
+  });
+
   it("dirtyなメモだけを送り、dirtyフィールドは含めない", async () => {
     // full（fullResyncV4未実施時の自動全量）ではなく通常のdirty収集だけを検証したいので、
     // 既に全量同期済みの端末を装っておく（Fix1で full時は全行dirtyになる仕様のため）

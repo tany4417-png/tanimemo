@@ -77,6 +77,23 @@ describe("/api/sync", () => {
     expect(r2.notes).toEqual([]);
   });
 
+  it("blobのPUTは既存の削除済み添付(tombstone)を復活させない", async () => {
+    // 旧クライアントは削除済み添付のblobも再PUTしてくる。PUTがメタ行を「生存・現在時刻」で
+    // 上書きすると削除tombstoneがLWWで負けて復活する（2026-07-21 実バグの回帰テスト）
+    await SELF.fetch("https://example.com/api/attachments/ZATT?noteId=N1", {
+      method: "PUT", headers: { Authorization: "Bearer test-token", "Content-Type": "image/png" }, body: new Uint8Array([1]),
+    });
+    await sync({
+      since: 0, notes: [],
+      attachments: [{ id: "ZATT", noteId: "N1", mime: "image/png", size: 1, createdAt: 100, updatedAt: Date.now(), deleted: 1 }],
+    });
+    await SELF.fetch("https://example.com/api/attachments/ZATT?noteId=N1", {
+      method: "PUT", headers: { Authorization: "Bearer test-token", "Content-Type": "image/png" }, body: new Uint8Array([1]),
+    });
+    const r = await (await sync({ since: 0, notes: [], attachments: [] })).json() as any;
+    expect(r.attachments.find((a: any) => a.id === "ZATT")?.deleted).toBe(1);
+  });
+
   it("添付メタも往復する", async () => {
     const att = { id: "01ATT", noteId: "01NOTE", mime: "image/png", size: 3, createdAt: 100, updatedAt: 100, deleted: 0 };
     await sync({ since: 0, notes: [], attachments: [att] });

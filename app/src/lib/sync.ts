@@ -52,6 +52,9 @@ export async function runSync(
   // 集めて後段のdirtyクリアから除外する（＝そのidのdirtyは1のまま残り、次回のrunSyncで再送される）
   const failedAttachmentIds = new Set<string>();
   for (const a of dirtyAtts) {
+    // 削除済み添付は実体を再送しない。PUTするとサーバーのメタ行が「生存・現在時刻」で上書きされ、
+    // 下のPOSTで送る削除tombstoneがLWWで負けて復活してしまう（2026-07-21 実バグ）。削除の伝搬はPOSTに任せる
+    if (a.deleted === 1) continue;
     const rec = await db.attachmentBlobs.get(a.id);
     if (!rec) continue;
     try {
