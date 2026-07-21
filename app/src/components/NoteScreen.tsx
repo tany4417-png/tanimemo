@@ -3,10 +3,14 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { addImageFromBlob, getImageBlob } from "../lib/attachments";
 import { accentClassFor } from "../lib/colors";
 import { flattenFolderTree, listAllFolders, moveNote } from "../lib/folders";
+import { canRedo, canUndo, histInit, histPush, histRedo, histUndo, type Hist } from "../lib/history";
 import { renderMarkdown, toggleCheckbox } from "../lib/markdown";
 import type { Note } from "../lib/types";
-import { BackIcon, ImageIcon } from "./icons";
+import { BackIcon, ImageIcon, RedoIcon, UndoIcon } from "./icons";
 import { useAttachmentUrls } from "./useAttachmentUrls";
+
+// 編集中の変更確定までの猶予（ms）。この間隔だけ入力が途切れたら、その時点のdraftを1スナップショットとしてhistoryへ積む
+const HISTORY_COALESCE_MS = 600;
 
 type Props = {
   syncBar: React.ReactNode;
@@ -28,10 +32,84 @@ export function NoteScreen({ syncBar, note, startEditing, onChange, onDelete, on
   const allFolders = useLiveQuery(listAllFolders, [], []);
   const flatFolders = useMemo(() => flattenFolderTree(allFolders), [allFolders]);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  // undo/redo履歴。editing中だけ使い、historyRef自体はrefなので更新してもrenderされない。
+  // canUndo/canRedoの表示（ボタンのdisabled）を更新するためだけに、値は使わずsetHistoryTickでrenderを誘発する
+  const historyRef = useRef<Hist>(histInit(note.body));
+  const [, setHistoryTick] = useState(0);
+  const coalesceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (coalesceTimer.current) clearTimeout(coalesceTimer.current);
+    };
+  }, []);
+
+  // 変更が続く間はタイマーを延長し、HISTORY_COALESCE_MSだけ途切れたらその時点のdraftを1スナップショットとして積む
+  function scheduleSnapshot(next: string) {
+    if (coalesceTimer.current) clearTimeout(coalesceTimer.current);
+    coalesceTimer.current = setTimeout(() => {
+      coalesceTimer.current = null;
+      historyRef.current = histPush(historyRef.current, next);
+      setHistoryTick((v) => v + 1);
+    }, HISTORY_COALESCE_MS);
+  }
+
+  // undo/redo直前に未確定（coalescing待ち）の変更があれば、まずそれを1スナップショットとして積んでから操作する
+  function flushPendingSnapshot() {
+    if (coalesceTimer.current) {
+      clearTimeout(coalesceTimer.current);
+      coalesceTimer.current = null;
+      historyRef.current = histPush(historyRef.current, draft);
+    }
+  }
+
+  function onDraftChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
+    const next = e.target.value;
+    setDraft(next);
+    scheduleSnapshot(next);
+  }
+
+  function undo() {
+    flushPendingSnapshot();
+    const h = histUndo(historyRef.current);
+    historyRef.current = h;
+    setDraft(h.present);
+    setHistoryTick((v) => v + 1);
+    textareaRef.current?.focus();
+  }
+
+  function redo() {
+    flushPendingSnapshot();
+    const h = histRedo(historyRef.current);
+    historyRef.current = h;
+    setDraft(h.present);
+    setHistoryTick((v) => v + 1);
+    textareaRef.current?.focus();
+  }
+
+  function startEdit() {
+    if (coalesceTimer.current) {
+      clearTimeout(coalesceTimer.current);
+      coalesceTimer.current = null;
+    }
+    setDraft(note.body);
+    historyRef.current = histInit(note.body);
+    setHistoryTick(0);
+    setEditing(true);
+  }
 
   function save() {
+    if (coalesceTimer.current) {
+      clearTimeout(coalesceTimer.current);
+      coalesceTimer.current = null;
+    }
     onChange({ body: draft });
     setEditing(false);
+    // メモをまたいで持ち越さないよう、保存・編集終了でhistoryは破棄する
+    historyRef.current = histInit(draft);
+    setHistoryTick(0);
   }
 
   async function moveTo(folderId: string | null) {
@@ -102,10 +180,20 @@ export function NoteScreen({ syncBar, note, startEditing, onChange, onDelete, on
             style={{ display: "none" }}
             onChange={onPickFiles}
           />
+          {editing && (
+            <>
+              <button className="icon-btn" aria-label="取り消し" disabled={!canUndo(historyRef.current)} onClick={undo}>
+                <UndoIcon />
+              </button>
+              <button className="icon-btn" aria-label="やり直し" disabled={!canRedo(historyRef.current)} onClick={redo}>
+                <RedoIcon />
+              </button>
+            </>
+          )}
           {editing ? (
             <button className="primary" onClick={save}>保存</button>
           ) : (
-            <button className="tint acc-amber" onClick={() => { setDraft(note.body); setEditing(true); }}>編集</button>
+            <button className="tint acc-amber" onClick={startEdit}>編集</button>
           )}
           <button className="danger" onClick={onDelete}>削除</button>
         </div>
@@ -139,10 +227,11 @@ export function NoteScreen({ syncBar, note, startEditing, onChange, onDelete, on
       />
       {editing ? (
         <textarea
+          ref={textareaRef}
           className="editor"
           autoFocus
           value={draft}
-          onChange={(e) => setDraft(e.target.value)}
+          onChange={onDraftChange}
           onPaste={onEditorPaste}
         />
       ) : (

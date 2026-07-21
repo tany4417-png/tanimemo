@@ -180,11 +180,6 @@ button.icon-btn { width: 36px; height: 36px; padding: 0; }
 .crumb-sep { color: var(--ink-soft); }
 
 .folder-card { display: flex; align-items: center; gap: 8px; position: relative; background: #FDFBF5; }
-.folder-card::before {
-  content: ""; position: absolute; top: -9px; left: 12px; width: 56px; height: 10px;
-  background: var(--acc-tint, var(--card)); border: 1px solid var(--acc, var(--rule)); border-bottom: none;
-  border-top-left-radius: 4px; border-top-right-radius: 4px;
-}
 .folder-card .folder-icon { flex: none; color: var(--acc, var(--ink)); }
 .folder-card .folder-name { flex: 1; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .folder-card .folder-count { font-size: 12px; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
@@ -204,8 +199,7 @@ button.icon-btn { width: 36px; height: 36px; padding: 0; }
 [data-drop-folder].drop-active { outline: 2px solid var(--indigo); outline-offset: -2px; border-radius: 8px; background: #F2F4F0; }
 
 /* 手動並べ替えの挿入インジケータ: 対象カードの上/下辺に2pxの線を出す。
-   ::before/::afterは.folder-cardの「タブ」装飾(::before)と競合するため、box-shadowで表現し
-   既存の影(--shadow-1, --shadow-2)を消さないよう並べて指定する */
+   box-shadowで表現し、既存の影(--shadow-1, --shadow-2)を消さないよう並べて指定する */
 .insert-before { box-shadow: inset 0 2px 0 0 var(--indigo), var(--shadow-1), var(--shadow-2); }
 .insert-after { box-shadow: inset 0 -2px 0 0 var(--indigo), var(--shadow-1), var(--shadow-2); }
 
@@ -223,6 +217,3 @@ button.icon-btn { width: 36px; height: 36px; padding: 0; }
   .view-transition { animation: none; }
   .dot.syncing { animation: none; }
 }
-
-/* インデックスタブの分だけフォルダカードの上に余白を確保（前のカードへの重なり防止） */
-.swipe-wrap:has(> .folder-card) { margin-top: 12px; overflow: visible; overflow-x: clip; }

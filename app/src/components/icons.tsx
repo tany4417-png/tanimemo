@@ -91,3 +91,23 @@ export function ExportIcon({ size = 24, className }: IconProps) {
     </svg>
   );
 }
+
+// 取り消し（左曲がり矢印）
+export function UndoIcon({ size = 24, className }: IconProps) {
+  return (
+    <svg width={size} height={size} className={className} {...common}>
+      <polyline points="9 7 4 12 9 17" />
+      <path d="M4 12h11a5 5 0 0 1 0 10h-1" />
+    </svg>
+  );
+}
+
+// やり直し（右曲がり矢印）
+export function RedoIcon({ size = 24, className }: IconProps) {
+  return (
+    <svg width={size} height={size} className={className} {...common}>
+      <polyline points="15 7 20 12 15 17" />
+      <path d="M20 12H9a5 5 0 0 0 0 10h1" />
+    </svg>
+  );
+}
