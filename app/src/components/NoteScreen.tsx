@@ -20,7 +20,7 @@ type Props = {
   slideClass: string;
   note: Note;
   startEditing?: boolean;
-  onChange: (patch: { body?: string; tags?: string[]; importance?: 0 | 1 | 2 | 3 }) => void;
+  onChange: (patch: { body?: string; importance?: 0 | 1 | 2 | 3 }) => void;
   onDelete: () => void;
   onBack: () => void;
   // メモの移動（移動ピッカーで選んだ先）。App側でundo登録・同期スケジュールまで面倒を見る
@@ -231,17 +231,10 @@ export function NoteScreen({ syncBar, slideClass, note, startEditing, onChange, 
           ))}
         </div>
       )}
-      {/* ヘッダー（・移動ピッカー）以外＝タグ入力・本文・ギャラリーだけがスクロール＆バウンドする */}
+      {/* ヘッダー（・移動ピッカー）以外＝本文・ギャラリーだけがスクロール＆バウンドする */}
       <div className="screen-body">
         {/* 内容が短くてもラバーバンドさせるため、中身全体を.bounce-areaで1枚ラップする（常にコンテナ＋1pxの高さ） */}
         <div className="bounce-area">
-          <input
-            key={note.id}
-            className="tags-input"
-            placeholder="タグ（カンマ区切り）"
-            defaultValue={note.tags.join(", ")}
-            onBlur={(e) => onChange({ tags: e.target.value.split(",").map((s) => s.trim()).filter(Boolean) })}
-          />
           {editing ? (
             <textarea
               ref={textareaRef}

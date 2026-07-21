@@ -11,7 +11,7 @@ beforeEach(async () => {
 
 function n(over: Partial<Note> = {}): Note {
   return {
-    id: "01HZXW3E8PDEMO0000000000AB", body: "買い物メモ\n- [ ] 牛乳", tags: ["家"], importance: 2,
+    id: "01HZXW3E8PDEMO0000000000AB", body: "買い物メモ\n- [ ] 牛乳", importance: 2,
     createdAt: new Date("2026-07-20T09:00:00").getTime(), updatedAt: 0, deleted: 0, dirty: 0, folderId: null, ...over,
   };
 }
@@ -35,7 +35,6 @@ describe("エクスポートの純関数", () => {
 
   it("noteContentはフロントマター付き（folderPath省略時はfolder行なし）", () => {
     const c = noteContent(n());
-    expect(c).toContain('tags: ["家"]');
     expect(c).toContain("importance: 2");
     expect(c).not.toContain("folder:");
     expect(c.endsWith("買い物メモ\n- [ ] 牛乳\n")).toBe(true);

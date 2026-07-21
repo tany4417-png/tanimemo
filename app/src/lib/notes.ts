@@ -3,11 +3,11 @@ import { db } from "./db";
 import { thumbKey } from "./attachments";
 import type { Note } from "./types";
 
-export type NotePatch = Partial<Pick<Note, "body" | "tags" | "importance" | "deleted" | "folderId" | "orderKey">>;
+export type NotePatch = Partial<Pick<Note, "body" | "importance" | "deleted" | "folderId" | "orderKey">>;
 
-export async function createNote(body = "", tags: string[] = [], folderId: string | null = null): Promise<Note> {
+export async function createNote(body = "", folderId: string | null = null): Promise<Note> {
   const now = Date.now();
-  const n: Note = { id: ulid(), body, tags, importance: 0, createdAt: now, updatedAt: now, deleted: 0, dirty: 1, folderId, orderKey: null };
+  const n: Note = { id: ulid(), body, importance: 0, createdAt: now, updatedAt: now, deleted: 0, dirty: 1, folderId, orderKey: null };
   await db.notes.put(n);
   return n;
 }
@@ -26,10 +26,6 @@ export async function softDeleteNote(id: string): Promise<Note> {
 
 export async function listActiveNotes(): Promise<Note[]> {
   return (await db.notes.toArray()).filter((n) => n.deleted === 0);
-}
-
-export function allTags(notes: Note[]): string[] {
-  return [...new Set(notes.flatMap((n) => n.tags))].sort();
 }
 
 export const TRASH_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;

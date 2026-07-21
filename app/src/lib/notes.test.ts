@@ -2,7 +2,6 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { db, resetDbForTests } from "./db";
 import { createFolder } from "./folders";
 import {
-  allTags,
   createNote,
   listActiveNotes,
   listTrashedNotes,
@@ -18,7 +17,7 @@ beforeEach(async () => {
 
 describe("メモCRUD", () => {
   it("作成すると一覧に出て、dirty=1が付く", async () => {
-    const n = await createNote("最初のメモ", ["仕事"]);
+    const n = await createNote("最初のメモ");
     expect(n.id).toHaveLength(26);
     expect(n.dirty).toBe(1);
     const list = await listActiveNotes();
@@ -27,12 +26,12 @@ describe("メモCRUD", () => {
   });
 
   it("folderId省略時はnull（既存呼び出しと互換）", async () => {
-    const n = await createNote("body", ["t"]);
+    const n = await createNote("body");
     expect(n.folderId).toBeNull();
   });
 
   it("folderIdを指定して作成できる", async () => {
-    const n = await createNote("body", [], "FOLDER1");
+    const n = await createNote("body", "FOLDER1");
     expect(n.folderId).toBe("FOLDER1");
   });
 
@@ -57,13 +56,6 @@ describe("メモCRUD", () => {
     const n = await createNote("消すメモ");
     await softDeleteNote(n.id);
     expect(await listActiveNotes()).toHaveLength(0);
-  });
-
-  it("allTagsは重複なしのソート済み", async () => {
-    await createNote("1", ["b", "a"]);
-    await createNote("2", ["a", "c"]);
-    const notes = await listActiveNotes();
-    expect(allTags(notes)).toEqual(["a", "b", "c"]);
   });
 });
 

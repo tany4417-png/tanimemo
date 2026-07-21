@@ -88,9 +88,9 @@ describe("フォルダCRUD", () => {
 describe("listNotesIn", () => {
   it("指定フォルダ内の未削除メモだけ返す", async () => {
     const folder = await createFolder("フォルダA", null);
-    const n1 = await createNote("in-folder", [], folder.id);
+    const n1 = await createNote("in-folder", folder.id);
     const n2 = await createNote("root-note");
-    const n3 = await createNote("in-folder-deleted", [], folder.id);
+    const n3 = await createNote("in-folder-deleted", folder.id);
     await db.notes.update(n3.id, { deleted: 1 });
     void n2;
 
@@ -209,8 +209,8 @@ describe("deleteFolderWithContents", () => {
     const grandparent = await createFolder("祖父", null);
     const target = await createFolder("対象", grandparent.id);
     const childFolder = await createFolder("子フォルダ", target.id);
-    const note = await createNote("対象直下のメモ", [], target.id);
-    const childNote = await createNote("子フォルダ直下のメモ", [], childFolder.id);
+    const note = await createNote("対象直下のメモ", target.id);
+    const childNote = await createNote("子フォルダ直下のメモ", childFolder.id);
 
     await db.folders.update(grandparent.id, { dirty: 0 });
     await db.folders.update(target.id, { dirty: 0 });
@@ -245,7 +245,7 @@ describe("deleteFolderWithContents", () => {
     const root = await createFolder("root", null);
     const mid = await createFolder("mid", root.id);
     const leaf = await createFolder("leaf", mid.id);
-    const leafNote = await createNote("葉のメモ", [], leaf.id);
+    const leafNote = await createNote("葉のメモ", leaf.id);
 
     await deleteFolderWithContents(root.id);
 
@@ -257,7 +257,7 @@ describe("deleteFolderWithContents", () => {
 
   it("既に削除済みのメモには触れない（dirtyが立たない）", async () => {
     const folder = await createFolder("対象", null);
-    const alreadyDeleted = await createNote("既に削除済み", [], folder.id);
+    const alreadyDeleted = await createNote("既に削除済み", folder.id);
     await db.notes.update(alreadyDeleted.id, { deleted: 1, dirty: 0 });
 
     await deleteFolderWithContents(folder.id);
@@ -290,7 +290,7 @@ describe("restoreFolderWithContents", () => {
   it("フォルダを復元すると削除済みだった子フォルダ・メモも再帰的に戻る", async () => {
     const parent = await createFolder("親", null);
     const child = await createFolder("子", parent.id);
-    const note = await createNote("メモ", [], child.id);
+    const note = await createNote("メモ", child.id);
 
     await deleteFolderWithContents(parent.id);
     await restoreFolderWithContents(parent.id);
@@ -358,7 +358,7 @@ describe("listAllFolders", () => {
 
 describe("repairOrphans", () => {
   it("存在しないfolderIdを指す孤児メモはルートへ戻りdirtyが立つ", async () => {
-    const n = await createNote("孤児メモ", [], "MISSING_FOLDER");
+    const n = await createNote("孤児メモ", "MISSING_FOLDER");
     await db.notes.update(n.id, { dirty: 0 });
 
     const fixed = await repairOrphans();
@@ -372,7 +372,7 @@ describe("repairOrphans", () => {
   it("削除済み(tombstone)フォルダを指す孤児メモもルートへ戻る", async () => {
     const folder = await createFolder("消えるフォルダ", null);
     await db.folders.update(folder.id, { deleted: 1 });
-    const n = await createNote("メモ", [], folder.id);
+    const n = await createNote("メモ", folder.id);
     await db.notes.update(n.id, { dirty: 0 });
 
     const fixed = await repairOrphans();
@@ -396,7 +396,7 @@ describe("repairOrphans", () => {
   it("正常な階層（親子とも生存）は触らない", async () => {
     const root = await createFolder("root", null);
     const child = await createFolder("child", root.id);
-    const n = await createNote("メモ", [], child.id);
+    const n = await createNote("メモ", child.id);
     await db.folders.update(root.id, { dirty: 0 });
     await db.folders.update(child.id, { dirty: 0 });
     await db.notes.update(n.id, { dirty: 0 });
@@ -411,7 +411,7 @@ describe("repairOrphans", () => {
   });
 
   it("削除済みのメモ・フォルダ自体は救出対象にしない", async () => {
-    const n = await createNote("削除済みメモ", [], "MISSING");
+    const n = await createNote("削除済みメモ", "MISSING");
     await db.notes.update(n.id, { deleted: 1, dirty: 0 });
     const f = await createFolder("削除済みフォルダ", "MISSING_PARENT");
     await db.folders.update(f.id, { deleted: 1, dirty: 0 });
@@ -426,7 +426,7 @@ describe("repairOrphans", () => {
 
 describe("countOrphans", () => {
   it("孤児メモ・孤児フォルダの合計件数を返す（修復はしない）", async () => {
-    const n = await createNote("孤児メモ", [], "MISSING_FOLDER");
+    const n = await createNote("孤児メモ", "MISSING_FOLDER");
     const f = await createFolder("孤児フォルダ", "MISSING_PARENT");
 
     const count = await countOrphans();
@@ -439,13 +439,13 @@ describe("countOrphans", () => {
 
   it("孤児が無ければ0を返す", async () => {
     const root = await createFolder("root", null);
-    await createNote("メモ", [], root.id);
+    await createNote("メモ", root.id);
 
     expect(await countOrphans()).toBe(0);
   });
 
   it("削除済み(tombstone)のメモ・フォルダ自体はカウント対象にしない", async () => {
-    const n = await createNote("削除済みメモ", [], "MISSING");
+    const n = await createNote("削除済みメモ", "MISSING");
     await db.notes.update(n.id, { deleted: 1 });
     const f = await createFolder("削除済みフォルダ", "MISSING_PARENT");
     await db.folders.update(f.id, { deleted: 1 });

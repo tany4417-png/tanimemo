@@ -1,7 +1,6 @@
 export type Note = {
   id: string;
   body: string;
-  tags: string[];
   importance: 0 | 1 | 2 | 3;
   createdAt: number;
   updatedAt: number;

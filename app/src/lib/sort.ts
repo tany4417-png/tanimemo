@@ -26,11 +26,6 @@ export function sortNotes(notes: Note[], mode: SortMode): Note[] {
   return [...sorted.filter((n) => n.importance === 3), ...sorted.filter((n) => n.importance !== 3)];
 }
 
-export function filterByTags(notes: Note[], tags: string[]): Note[] {
-  if (tags.length === 0) return notes;
-  return notes.filter((n) => tags.every((t) => n.tags.includes(t)));
-}
-
 export function searchNotes(notes: Note[], query: string): Note[] {
   const q = query.trim().toLowerCase();
   if (!q) return notes;

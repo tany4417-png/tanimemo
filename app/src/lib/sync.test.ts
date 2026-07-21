@@ -38,8 +38,8 @@ describe("runSync", () => {
 
   it("受信は新しい方だけ適用する（LWW）", async () => {
     const a = await createNote("local");
-    const incomingNew = { id: "REMOTE1", body: "r", tags: [], importance: 0 as const, createdAt: 1, updatedAt: 1, deleted: 0 as const, folderId: null };
-    const incomingOld = { id: a.id, body: "stale", tags: [], importance: 0 as const, createdAt: 1, updatedAt: a.updatedAt - 1, deleted: 0 as const, folderId: null };
+    const incomingNew = { id: "REMOTE1", body: "r", importance: 0 as const, createdAt: 1, updatedAt: 1, deleted: 0 as const, folderId: null };
+    const incomingOld = { id: a.id, body: "stale", importance: 0 as const, createdAt: 1, updatedAt: a.updatedAt - 1, deleted: 0 as const, folderId: null };
     const { f } = okFetch({ notes: [incomingNew, incomingOld] });
     const result = await runSync("tok", f);
     expect(result.pulled).toBe(2);
@@ -57,7 +57,6 @@ describe("runSync", () => {
     const incomingSameTime = {
       id: a.id,
       body: "server-side",
-      tags: [],
       importance: 0 as const,
       createdAt: a.createdAt,
       updatedAt: a.updatedAt, // 同一updatedAt
@@ -101,7 +100,6 @@ describe("runSync", () => {
     const echoBack = {
       id: a.id,
       body: a.body,
-      tags: a.tags,
       importance: a.importance,
       createdAt: a.createdAt,
       updatedAt: a.updatedAt,

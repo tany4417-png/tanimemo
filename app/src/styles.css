@@ -139,21 +139,6 @@ button.tint { background: var(--acc, var(--neutral)); border-color: var(--acc, v
 }
 button.danger { background: var(--vermilion); border-color: var(--vermilion); color: #fff; }
 
-/* ==================== タグ ==================== */
-.tagbar { display: flex; gap: 6px; flex-wrap: wrap; padding-bottom: 8px; }
-.tag {
-  min-height: auto; padding: 4px 10px; border-radius: 999px; font-size: 13px;
-  border: 1px solid var(--acc, var(--rule)); background: var(--acc-tint, var(--card)); color: var(--acc, var(--ink-soft));
-}
-.tag.active { background: var(--acc, var(--indigo)); border-color: var(--acc, var(--indigo)); color: #fff; }
-
-/* card-subの#タグ表示（一覧カード下部）。tagbarの.tagより小さく、テキスト中に収まるチップにする */
-.tag-chip {
-  display: inline-block; padding: 1px 7px; border-radius: 999px; font-size: 11px;
-  border: 1px solid var(--acc, var(--rule)); background: var(--acc-tint, var(--card)); color: var(--acc, var(--ink-soft));
-  margin-left: 4px;
-}
-
 /* ==================== カード ==================== */
 .card {
   background: var(--card); border: 1px solid var(--rule); border-radius: 8px;
@@ -229,7 +214,6 @@ button.danger { background: var(--vermilion); border-color: var(--vermilion); co
 .stars { display: flex; }
 .star { border: none; background: none; color: var(--rule); padding: 4px; font-size: 1.2rem; min-height: 44px; min-width: 44px; }
 .star.on { color: var(--star); }
-.tags-input { margin-bottom: 8px; }
 .editor { flex: 1; min-height: 55vh; resize: none; line-height: 1.7; }
 .note-view { background: var(--card); border: 1px solid var(--rule); border-radius: 10px; padding: 4px 16px; line-height: 1.8; overflow-wrap: break-word; }
 .note-view a { color: var(--indigo); }

@@ -41,7 +41,6 @@ describe("Dexie version(2) アップグレード", () => {
     await v1.table("notes").put({
       id: "OLD1",
       body: "既存メモ",
-      tags: ["a"],
       importance: 1,
       createdAt: 1,
       updatedAt: 2,
@@ -81,7 +80,6 @@ describe("Dexie version(2) アップグレード", () => {
     await v1.table("notes").put({
       id: "OLD2",
       body: "フォルダ済みメモ",
-      tags: [],
       importance: 0,
       createdAt: 1,
       updatedAt: 2,

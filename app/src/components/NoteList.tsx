@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { accentClassFor } from "../lib/colors";
 import { firstLineTitle, urlOnly } from "../lib/markdown";
 import { planReorder, type ReorderPlan } from "../lib/reorder";
 import type { SortMode } from "../lib/sort";
@@ -13,17 +12,14 @@ import { type ReorderHandler, SwipeableCard } from "./SwipeableCard";
 type Props = {
   syncBar: React.ReactNode;
   notes: Note[];
-  allTags: string[];
   sort: SortMode;
   onSort: (m: SortMode) => void;
-  activeTags: string[];
-  onToggleTag: (t: string) => void;
   query: string;
   onQuery: (q: string) => void;
   onOpen: (id: string) => void;
   onCreate: () => void;
   onDelete: (id: string) => void;
-  // 検索・タグ絞り込み中はフォルダ横断表示になるモード。App側の判定を一本化して受け取る
+  // 検索中はフォルダ横断表示になるモード。App側の判定を一本化して受け取る
   isBrowsingFolder: boolean;
   currentFolderId: string | null;
   // 画面切替（list/note/settings/trash）・フォルダ間移動共通のスライドインクラス（slide-in-left/right、
@@ -90,17 +86,6 @@ export function NoteList(p: Props) {
         {isBrowsingFolder && (
           <Breadcrumb path={p.folderPath} onNavigate={p.onNavigateUp} onRenameCurrent={p.onRenameCurrentFolder} />
         )}
-        <div className="tagbar">
-          {p.allTags.map((t) => (
-            <button
-              key={t}
-              className={`tag ${accentClassFor(t)}${p.activeTags.includes(t) ? " active" : ""}`}
-              onClick={() => p.onToggleTag(t)}
-            >
-              {t}
-            </button>
-          ))}
-        </div>
       </div>
       {/* ヘッダー以外（フォルダ/メモカード一覧）は.screen-bodyだけがスクロール＆バウンドする */}
       <div className="screen-body">
@@ -165,9 +150,6 @@ export function NoteList(p: Props) {
                 <CardThumbs noteId={n.id} />
                 <div className="card-sub">
                   {new Date(n.updatedAt).toLocaleString("ja-JP")}
-                  {n.tags.map((t) => (
-                    <span key={t} className={`tag-chip ${accentClassFor(t)}`}>#{t}</span>
-                  ))}
                 </div>
               </SwipeableCard>
             ))}

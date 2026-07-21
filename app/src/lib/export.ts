@@ -27,7 +27,6 @@ export function notePath(n: Note): string {
 export function noteContent(n: Note, folderPathStr = ""): string {
   return [
     "---",
-    `tags: ${JSON.stringify(n.tags)}`,
     `importance: ${n.importance}`,
     ...(folderPathStr ? [`folder: ${folderPathStr}`] : []),
     `created: ${new Date(n.createdAt).toISOString()}`,

@@ -25,9 +25,9 @@ import {
   updateFolder,
 } from "./lib/folders";
 import { shouldCompleteBack } from "./lib/gesture";
-import { allTags, createNote, listActiveNotes, purgeExpiredTrashLocal, restoreNote, softDeleteNote, updateNote, type NotePatch } from "./lib/notes";
+import { createNote, listActiveNotes, purgeExpiredTrashLocal, restoreNote, softDeleteNote, updateNote, type NotePatch } from "./lib/notes";
 import type { ReorderPlan } from "./lib/reorder";
-import { filterByTags, searchNotes, sortNotes, type SortMode } from "./lib/sort";
+import { searchNotes, sortNotes, type SortMode } from "./lib/sort";
 import { runSync } from "./lib/sync";
 
 type View = { name: "list" } | { name: "note"; id: string; isNew?: boolean } | { name: "settings" } | { name: "trash" };
@@ -35,7 +35,6 @@ type View = { name: "list" } | { name: "note"; id: string; isNew?: boolean } | {
 // メモ内容の変更（App onChangeハンドラ経由）の操作ラベル。undo/redoボタンの表示にのみ使う
 function labelForNotePatch(patch: NotePatch): string {
   if ("importance" in patch) return "重要度を変更";
-  if ("tags" in patch) return "タグを変更";
   if ("body" in patch) return "本文を変更";
   return "メモを編集";
 }
@@ -54,7 +53,6 @@ export default function App() {
     localStorage.setItem("tanimemo.sort", m);
     setSortState(m);
   };
-  const [activeTags, setActiveTags] = useState<string[]>([]);
   const [query, setQuery] = useState("");
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
   const [token, setToken] = useState(() => localStorage.getItem("tanimemo.token") ?? "");
@@ -127,15 +125,15 @@ export default function App() {
   );
   const childFolders = useLiveQuery(() => listChildFolders(currentFolderId), [currentFolderId], []);
   const folderPathList = useLiveQuery(() => folderPath(currentFolderId), [currentFolderId], []);
-  // 検索・タグ絞り込みがどちらも空のときだけ現在フォルダ直下に絞る。絞り込み中は全フォルダ横断（従来どおり）
-  const isBrowsingFolder = query.trim() === "" && activeTags.length === 0;
+  // 検索が空のときだけ現在フォルダ直下に絞る。検索中は全フォルダ横断（従来どおり）
+  const isBrowsingFolder = query.trim() === "";
   const scopedNotes = useMemo(
     () => (isBrowsingFolder ? notes.filter((n) => n.folderId === currentFolderId) : notes),
     [notes, isBrowsingFolder, currentFolderId]
   );
   const shown = useMemo(
-    () => sortNotes(searchNotes(filterByTags(scopedNotes, activeTags), query), sort),
-    [scopedNotes, activeTags, query, sort]
+    () => sortNotes(searchNotes(scopedNotes, query), sort),
+    [scopedNotes, query, sort]
   );
   const current = view.name === "note" ? notes.find((n) => n.id === view.id) : undefined;
 
@@ -257,14 +255,14 @@ export default function App() {
       const files = items.filter((i) => i.kind === "file").map((i) => i.getAsFile()).filter((f): f is File => f !== null);
       const images = files.filter((f) => f.type.startsWith("image/"));
       if (images.length > 0) {
-        const n = await createNote("", []);
+        const n = await createNote("");
         for (const f of images) await addImageFromBlob(n.id, f);
         scheduleSync();
         return;
       }
       const text = e.clipboardData?.getData("text")?.trim() ?? "";
       if (text) {
-        await createNote(text, []);
+        await createNote(text);
         scheduleSync();
       }
     }
@@ -280,7 +278,7 @@ export default function App() {
   }, []);
 
   const onCreate = useCallback(async () => {
-    const n = await createNote("", [], currentFolderId);
+    const n = await createNote("", currentFolderId);
     goForward({ name: "note", id: n.id, isNew: true });
   }, [currentFolderId, goForward]);
 
@@ -341,7 +339,7 @@ export default function App() {
       const target = e.target as HTMLElement;
       if (
         !canGoBack ||
-        target.closest(".card, .swipe-wrap, button, a, input, textarea, select, .breadcrumb, .tagbar, .overlay, .gallery, img")
+        target.closest(".card, .swipe-wrap, button, a, input, textarea, select, .breadcrumb, .overlay, .gallery, img")
       ) {
         backSwipeStart.current = null;
         return;
@@ -641,11 +639,8 @@ export default function App() {
           syncBar={syncBar}
           slideClass={slideClass}
           notes={shown}
-          allTags={allTags(notes)}
           sort={sort}
           onSort={setSort}
-          activeTags={activeTags}
-          onToggleTag={(t) => setActiveTags((a) => (a.includes(t) ? a.filter((x) => x !== t) : [...a, t]))}
           query={query}
           onQuery={setQuery}
           onOpen={(id) => goForward({ name: "note", id })}
@@ -687,7 +682,6 @@ export default function App() {
             // 逆操作に必要な旧値は、変更対象のフィールドだけをcurrentからスナップショットする
             const before: NotePatch = {};
             if ("body" in patch) before.body = current.body;
-            if ("tags" in patch) before.tags = current.tags;
             if ("importance" in patch) before.importance = current.importance;
             void runAction(
               labelForNotePatch(patch),

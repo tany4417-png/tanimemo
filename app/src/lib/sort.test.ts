@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { Note } from "./types";
-import { filterByTags, searchNotes, sortNotes } from "./sort";
+import { searchNotes, sortNotes } from "./sort";
 
 function n(id: string, over: Partial<Note> = {}): Note {
-  return { id, body: id, tags: [], importance: 0, createdAt: 0, updatedAt: 0, deleted: 0, dirty: 0, folderId: null, ...over };
+  return { id, body: id, importance: 0, createdAt: 0, updatedAt: 0, deleted: 0, dirty: 0, folderId: null, ...over };
 }
 
 describe("sortNotes", () => {
@@ -69,13 +69,7 @@ describe("sortNotes", () => {
   });
 });
 
-describe("filterByTags / searchNotes", () => {
-  it("タグはAND条件", () => {
-    const notes = [n("a", { tags: ["x", "y"] }), n("b", { tags: ["x"] })];
-    expect(filterByTags(notes, ["x", "y"]).map((x) => x.id)).toEqual(["a"]);
-    expect(filterByTags(notes, []).map((x) => x.id)).toEqual(["a", "b"]);
-  });
-
+describe("searchNotes", () => {
   it("検索は本文の部分一致・大文字小文字無視", () => {
     const notes = [n("a", { body: "Cloudflare Workers" }), n("b", { body: "メモ" })];
     expect(searchNotes(notes, "cloud").map((x) => x.id)).toEqual(["a"]);
