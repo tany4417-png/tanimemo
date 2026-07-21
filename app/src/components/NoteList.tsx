@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { firstLineTitle, urlOnly } from "../lib/markdown";
+import { makeSnippet } from "../lib/search";
 import { planReorder, type ReorderPlan } from "../lib/reorder";
 import type { SortMode } from "../lib/sort";
 import type { Folder, Note } from "../lib/types";
@@ -160,6 +161,20 @@ export function NoteList(p: Props) {
                     );
                   })()}
                 </div>
+                {/* 検索中だけ該当箇所の抜粋を出す（タップでその位置へ飛べることの手がかり） */}
+                {!isBrowsingFolder &&
+                  (() => {
+                    const s = makeSnippet(n.body, p.query);
+                    return (
+                      s && (
+                        <div className="card-snippet">
+                          {s.before}
+                          <mark className="search-hit">{s.match}</mark>
+                          {s.after}
+                        </div>
+                      )
+                    );
+                  })()}
                 <CardThumbs noteId={n.id} />
                 <div className="card-sub">
                   {new Date(n.updatedAt).toLocaleString("ja-JP")}
