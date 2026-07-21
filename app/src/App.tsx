@@ -25,7 +25,7 @@ import {
   updateFolder,
 } from "./lib/folders";
 import { shouldCompleteBack } from "./lib/gesture";
-import { createNote, listActiveNotes, purgeExpiredTrashLocal, restoreNote, softDeleteNote, updateNote, type NotePatch } from "./lib/notes";
+import { createNote, discardIfEmptyNew, listActiveNotes, purgeExpiredTrashLocal, restoreNote, softDeleteNote, sweepEmptyNewNotes, updateNote, type NotePatch } from "./lib/notes";
 import type { ReorderPlan } from "./lib/reorder";
 import { searchNotes, sortNotes, type SortMode } from "./lib/sort";
 import { runSync } from "./lib/sync";
@@ -221,6 +221,7 @@ export default function App() {
 
   useEffect(() => {
     void (async () => {
+      await sweepEmptyNewNotes();
       await purgeExpiredTrashLocal();
       await repairOrphansSafely();
     })();
@@ -307,6 +308,14 @@ export default function App() {
       setNavDirection("back");
       setSuppressSlideIn(silent);
       if (view.name === "note") {
+        // 新規作成から何も書かずに戻った空メモの後始末。ゴミ箱行き(trashed)になった場合だけ
+        // tombstoneを同期する。空メモを復活させる需要は無いためundo履歴（runAction）には積まない。
+        // fire-and-forget: 一覧のliveQueryが削除完了時に再発火するため、遷移をawaitで遅らせない
+        if (view.isNew) {
+          void discardIfEmptyNew(view.id).then((r) => {
+            if (r === "trashed") scheduleSync();
+          });
+        }
         setView({ name: "list" });
         return;
       }
@@ -323,7 +332,7 @@ export default function App() {
         setCurrentFolderId(parent);
       }
     },
-    [view, currentFolderId, folderPathList]
+    [view, currentFolderId, folderPathList, scheduleSync]
   );
 
   // ボタン・パンくず経由の「戻る」。バックスワイプの完了とは異なり、従来どおりスライドインを再生する
