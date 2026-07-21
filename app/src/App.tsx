@@ -221,13 +221,16 @@ export default function App() {
 
   // 起動時の初期化（空メモ掃除→ゴミ箱期限purge→孤児救済)。完了PromiseをinitCleanupRefで公開し、
   // syncNowは必ずこれを待ってから走る。掃除より先に初回同期が空メモをpushすると、物理削除後の
-  // エコーバック適用でdirty=0の空メモとして復活し、以後の掃除（dirty=1が条件）が二度と効かなくなるため
+  // エコーバック適用でdirty=0の空メモとして復活し、以後の掃除（dirty=1が条件）が二度と効かなくなるため。
+  // このeffectはsyncNowを呼ぶeffect（直後）より前に宣言しておくこと（宣言順が入れ替わるとゲートが素通りになる）
   useEffect(() => {
     initCleanupRef.current = (async () => {
       await sweepEmptyNewNotes();
       await purgeExpiredTrashLocal();
       await repairOrphansSafely();
-    })();
+    })().catch(() => {
+      // 掃除に失敗しても同期は止めない。未実行の掃除は復活レースの前提が無く、機能追加前の挙動に戻るだけ
+    });
   }, []);
 
   useEffect(() => {
