@@ -2,7 +2,15 @@
 
 自分専用のメモPWAです。オフラインで速く読み書きでき、iPhoneとPCの間で同期します。NotionとiPhoneメモ帳の置き換えとして作りました。
 
-1人につき1インスタンスを自分のCloudflareアカウントに立てて使います（無料枠で動きます）。
+> **はじめての方へ**: このページ上でアプリが動くわけではありません。ここにあるのは設計図と説明書です。タニメモは「使う人が自分のCloudflareアカウント（無料）に、自分専用のコピーを1つ作る」方式で、下の手順どおりに進めると**あなた専用のURL**ができて、スマホとPCから使えるようになります。所要30分〜1時間、費用は0円です。
+
+使えるようになるまでの全体像:
+
+1. PCに道具を2つ入れる（Node.js と Git）
+2. Cloudflareの無料アカウントを作る
+3. この設計図を手元にコピーする
+4. コマンドを順番に貼り付けて実行する（コピペで進められます）
+5. 最後に表示される自分専用URLをスマホ・PCで開いて設定する
 
 ## 特徴
 
@@ -27,41 +35,69 @@ docs/    iPhoneセットアップ手順など
 
 ## 自分用に立てる（セルフホスト）
 
-前提: Node.js 20以上、Cloudflareアカウント（無料プランで可）
+### 手順0: 道具を入れる（最初の1回だけ）
+
+- **Node.js**（LTS版）: https://nodejs.org/ からダウンロードしてインストールする
+- **Git**: https://git-scm.com/downloads からインストールする
+  - Gitを入れたくない場合は、このページ上部の緑の「Code」ボタン →「Download ZIP」でも代用できます。展開したフォルダで以降の手順を行ってください
+- コマンドを打つ画面を開く: **WindowsはPowerShell**（スタートメニューで「PowerShell」を検索）、**Macはターミナル**。以降のコマンドはすべてこの画面に貼り付けて Enter で実行します
+
+### 手順1: Cloudflareの無料アカウントを作る
+
+https://dash.cloudflare.com/sign-up でメールアドレスだけで作れます（クレジットカード不要）。タニメモの本体とデータは、この「あなたのアカウント」の上で動きます。
+
+### 手順2: コマンドを順番に実行する
+
+1行ずつ（`#` で始まる説明行は除く）貼り付けて実行してください。
 
 ```bash
-# 1. 取得と依存インストール
+# --- 設計図を手元にコピーして、部品を揃える ---
 git clone https://github.com/tany4417-png/tanimemo.git
-cd tanimemo/app && npm install
-cd ../worker && npm install
+cd tanimemo/app
+npm install
+cd ../worker
+npm install
 
-# 2. Cloudflareにログイン（worker/ で実行）
+# --- Cloudflareに接続する（ブラウザが開くのでログインして「Allow」を押す） ---
 npx wrangler login
 
-# 3. D1（データベース）とR2（画像置き場）を作る
+# --- メモ置き場（D1）と画像置き場（R2）をあなたのアカウントに作る ---
 npx wrangler d1 create tanimemo
-#    → 表示された database_id を worker/wrangler.jsonc の database_id に書き換える
+#   ↑実行すると database_id = "xxxx..." という行が表示される。
+#    worker/wrangler.jsonc をメモ帳で開き、database_id の値をそのxxxxに書き換えて保存する
 npx wrangler r2 bucket create tanimemo-att
 
-# 4. スキーマを適用
+# --- メモ置き場の中身（テーブル）を作る ---
 npx wrangler d1 migrations apply tanimemo --remote
 
-# 5. APIトークンを設定（長いランダム文字列を貼り付ける）
-#    生成例 mac/Linux: openssl rand -base64 33
-#    生成例 PowerShell: -join ((48..57)+(65..90)+(97..122) | Get-Random -Count 44 | % {[char]$_})
+# --- 合言葉（APIトークン)を決める。長いランダム文字列を作って貼り付ける ---
+#    生成例 Mac: openssl rand -base64 33
+#    生成例 Windows PowerShell: -join ((48..57)+(65..90)+(97..122) | Get-Random -Count 44 | % {[char]$_})
+#    ※生成した文字列は後でスマホにも入力するので、いったんメモしておく
 npx wrangler secret put API_TOKEN
 
-# 6. ビルドしてデプロイ
-cd ../app && npm run build
-cd ../worker && npx wrangler deploy
-#    → https://tanimemo.<あなたのサブドメイン>.workers.dev が表示される
+# --- アプリを組み立てて、あなたのCloudflareへ配置する ---
+cd ../app
+npm run build
+cd ../worker
+npx wrangler deploy
+#   ↑最後に https://tanimemo.<あなたのサブドメイン>.workers.dev と表示されたら完成。
+#    これがあなた専用のタニメモのURL
 ```
 
-端末側のセットアップ:
+### 手順3: スマホとPCで使えるようにする
 
-1. 表示されたURLをブラウザで開き、設定画面にAPIトークンを貼り付けて保存する
-2. スマホは「ホーム画面に追加」でPWAとしてインストールする
-3. iPhoneの共有シートから送れるようにする手順は [docs/ios-shortcut-setup.md](docs/ios-shortcut-setup.md)
+1. 表示されたURLをブラウザで開く
+2. 右上の「設定」を開き、手順2で決めたAPIトークンを貼り付けて保存する（これで同期が動き出す）
+3. スマホは共有メニューの「ホーム画面に追加」でアプリとしてインストールする
+4. iPhoneの共有シート（SafariのURLや写真を2タップで送る機能）を使う場合は [docs/ios-shortcut-setup.md](docs/ios-shortcut-setup.md) の手順を行う
+
+### つまずいたら
+
+- `npm` や `git` が「見つかりません」と出る → インストール後にPowerShell（ターミナル）を一度閉じて開き直す
+- `wrangler login` で開いたブラウザ → Cloudflareにログインして「Allow」を押せば、元の画面に戻って続行される
+- `wrangler deploy` で database_id 関連のエラー → 手順2の「wrangler.jsonc の書き換え」を確認する
+- アプリは開くが「同期エラー」→ 設定画面のトークンが手順2で設定した値と一致しているか確認する
 
 ## 開発
 
