@@ -18,6 +18,13 @@ export function isTap(moved: number, dragging: boolean, dragMode: boolean): bool
   return !dragging && !dragMode && moved < 10;
 }
 
+// マウス操作でカードのドラッグモードに入るかどうかの判定（pointerType==="mouse"の場合のみ使う）。
+// タッチ/ペンは350ms長押しでドラッグに入るが、マウスは長押し不要にする（PCでは長押しが不自然で使いにくいため）。
+// dist: pointerdownからの累計移動距離（√(dx²+dy²)、px、方向不問）。8pxを超えて動けば即ドラッグモードに入る
+export function shouldEnterMouseDrag(dist: number): boolean {
+  return dist > 8;
+}
+
 // 背景（カードやボタンの上ではない何もないところ）での右フリック追従スワイプ（iOS風の戻るジェスチャー）を、
 // 指を離した時点で「戻る操作として完了させる」か判定する。追従中は.screenが指に追従して動いており
 // （App.tsxのonMainPointerMove）、この関数はpointerup時点の最終dxと速度だけから完了/スナップバックを決める。

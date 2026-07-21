@@ -3,7 +3,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { accentClassFor } from "../lib/colors";
 import { resolveDropTarget } from "../lib/dnd";
 import { listNotesIn } from "../lib/folders";
-import { isTap, shouldOpenSwipe } from "../lib/gesture";
+import { isTap, shouldEnterMouseDrag, shouldOpenSwipe } from "../lib/gesture";
 import { firstLineTitle, urlOnly } from "../lib/markdown";
 import { planReorder, type ReorderPlan } from "../lib/reorder";
 import type { SortMode } from "../lib/sort";
@@ -323,6 +323,8 @@ function SwipeableCard({
   const dragModeRef = useRef(false); // 長押しドラッグ移動モード
   const pressTimer = useRef<number | undefined>(undefined);
   const pointerIdRef = useRef<number | null>(null);
+  // pointerdown時点のe.pointerType（"mouse" | "touch" | "pen"）。マウスは長押し不要・即ドラッグにするための分岐に使う
+  const pointerTypeRef = useRef<string>("touch");
   const dropTargetRef = useRef<Element | null>(null);
   // 並べ替え挿入インジケータのホバー先（フォルダ/パンくずへのドロップでない場合にのみ使う）
   const insertTargetRef = useRef<HTMLElement | null>(null);
@@ -485,7 +487,10 @@ function SwipeableCard({
           dxRef.current = baseDxRef.current;
           movedRef.current = 0;
           pointerIdRef.current = e.pointerId;
-          if (draggable) {
+          pointerTypeRef.current = e.pointerType;
+          // マウスは長押し不要（onPointerMoveで8px以上動いた時点で即ドラッグモードに入る）。
+          // タッチ/ペンは従来どおり350ms静止でドラッグモードの予約を入れる
+          if (draggable && e.pointerType !== "mouse") {
             window.clearTimeout(pressTimer.current);
             pressTimer.current = window.setTimeout(() => {
               if (!dragging.current && start.current) enterDragMode();
@@ -500,6 +505,11 @@ function SwipeableCard({
           // 誤タップ防止: pointerdownからの累計最大移動量を追跡する
           const distNow = Math.sqrt(dxNow * dxNow + dyNow * dyNow);
           if (distNow > movedRef.current) movedRef.current = distNow;
+
+          // マウス: 長押し不要。押したまま8px以上動いたら方向を問わず即ドラッグモードに入る
+          if (draggable && !dragModeRef.current && pointerTypeRef.current === "mouse" && shouldEnterMouseDrag(distNow)) {
+            enterDragMode();
+          }
 
           if (dragModeRef.current) {
             setDragOffset({ x: dxNow, y: dyNow });
@@ -558,6 +568,9 @@ function SwipeableCard({
             }
             return;
           }
+
+          // マウスはスワイプ削除を使わない（誤発動防止）。PCでの削除はカードを開いて削除ボタンを押す運用に留める
+          if (pointerTypeRef.current === "mouse") return;
 
           // 350ms以内に16pxを超えて動いたら、長押しドラッグの予約を解除する（以後は既存のスワイプ/スクロール判定に従う）
           if (pressTimer.current !== undefined && (Math.abs(dxNow) > PRESS_MOVE_CANCEL_PX || Math.abs(dyNow) > PRESS_MOVE_CANCEL_PX)) {

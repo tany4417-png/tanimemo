@@ -96,17 +96,22 @@ export async function runSync(
       const cur = await db.folders.get(fl.id);
       if (cur && cur.updatedAt === fl.updatedAt) await db.folders.update(fl.id, { dirty: 0 });
     }
+    // Fix1: 適用条件は厳密な">"ではなく">="にする。サーバー側upsertは">"のままなので早い者勝ちの
+    // 一意な基準は保たれるが、クライアント側を">="にすることで「同一updatedAtだが内容が違う」状態
+    // （例: Dexie v2アップグレードの不具合でupdatedAtを変えずにfolderIdだけローカルで書き換わった等）
+    // でもサーバーの値を採用して収束させる。自分がpushした行のエコーバック（内容が同一）を
+    // 再適用するだけなので無害
     for (const n of data.notes) {
       const cur = await db.notes.get(n.id);
-      if (!cur || n.updatedAt > cur.updatedAt) await db.notes.put({ ...n, folderId: n.folderId ?? null, orderKey: n.orderKey ?? null, dirty: 0 });
+      if (!cur || n.updatedAt >= cur.updatedAt) await db.notes.put({ ...n, folderId: n.folderId ?? null, orderKey: n.orderKey ?? null, dirty: 0 });
     }
     for (const a of data.attachments) {
       const cur = await db.attachments.get(a.id);
-      if (!cur || a.updatedAt > cur.updatedAt) await db.attachments.put({ ...a, dirty: 0 });
+      if (!cur || a.updatedAt >= cur.updatedAt) await db.attachments.put({ ...a, dirty: 0 });
     }
     for (const fl of folders) {
       const cur = await db.folders.get(fl.id);
-      if (!cur || fl.updatedAt > cur.updatedAt) await db.folders.put({ ...fl, orderKey: fl.orderKey ?? null, dirty: 0 });
+      if (!cur || fl.updatedAt >= cur.updatedAt) await db.folders.put({ ...fl, orderKey: fl.orderKey ?? null, dirty: 0 });
     }
     await db.meta.put({ key: "lastSync", value: data.now });
     if (full) await db.meta.put({ key: "fullResyncV3", value: 1 });

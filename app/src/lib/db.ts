@@ -1,8 +1,23 @@
-import Dexie, { type Table } from "dexie";
+import Dexie, { type Table, type Transaction } from "dexie";
 import type { AttachmentMeta, Folder, Note } from "./types";
 
 export type AttachmentBlobRow = { id: string; blob: Blob };
 export type MetaRow = { key: string; value: number | string };
+
+// v1→v2アップグレード本体。folderIdフィールドが無い行にだけnullを補うのが本来の意図。
+// 過去の不具合（Fix1恒久対策）: 同期で既にfolderIdの実データを受信済みの行にまで
+// modify({ folderId: null }) が無条件適用され、updatedAtを変えずにサーバー側の値を
+// ローカルだけnullで踏みつぶしていた。これがサーバーと「同時刻・別内容」の膠着を生む
+// 原因になっていたため、folderIdが未定義（=本当にv1のまま一度もfolderId概念に触れていない
+// 行）のときだけnullを補う形に直す。既存の値は絶対に上書きしない
+export async function migrateNotesFolderId(tx: Transaction): Promise<void> {
+  await tx
+    .table("notes")
+    .toCollection()
+    .modify((note: Partial<Note> & { id: string }) => {
+      if (note.folderId === undefined) note.folderId = null;
+    });
+}
 
 export class TanimemoDB extends Dexie {
   notes!: Table<Note, string>;
@@ -27,9 +42,7 @@ export class TanimemoDB extends Dexie {
         meta: "key",
         folders: "id, parentId, updatedAt, dirty",
       })
-      .upgrade(async (tx) => {
-        await tx.table("notes").toCollection().modify({ folderId: null });
-      });
+      .upgrade(migrateNotesFolderId);
   }
 }
 

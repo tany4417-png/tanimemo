@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isTap, shouldCompleteBack, shouldOpenSwipe } from "./gesture";
+import { isTap, shouldCompleteBack, shouldEnterMouseDrag, shouldOpenSwipe } from "./gesture";
 
 describe("shouldOpenSwipe", () => {
   it("40pxを超えて左に動けば開いた状態にする", () => {
@@ -34,6 +34,20 @@ describe("isTap", () => {
 
   it("ドラッグモードに入っていた場合はタップとみなさない", () => {
     expect(isTap(2, false, true)).toBe(false);
+  });
+});
+
+describe("shouldEnterMouseDrag", () => {
+  it("8pxを超えて動けばドラッグモードに入る", () => {
+    expect(shouldEnterMouseDrag(9)).toBe(true);
+  });
+
+  it("ちょうど8pxでは入らない", () => {
+    expect(shouldEnterMouseDrag(8)).toBe(false);
+  });
+
+  it("8px未満では入らない", () => {
+    expect(shouldEnterMouseDrag(3)).toBe(false);
   });
 });
 

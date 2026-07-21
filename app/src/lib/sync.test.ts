@@ -47,6 +47,31 @@ describe("runSync", () => {
     expect((await db.notes.get(a.id))?.body).toBe("local");
   });
 
+  it("同時刻・別内容はサーバーが勝つ（同一updatedAtの膠着解消・Fix1）", async () => {
+    // 実害の再現: Dexie v2アップグレードの不具合で、ローカルのfolderIdだけがupdatedAtを
+    // 変えずにサーバーと異なる値になり得た。以前は適用条件が厳密な">"だったため、
+    // updatedAtが同じ限り一生収束しなかった（膠着）。">="にしたことで、同時刻なら
+    // サーバー側の値を採用して収束することを確認する
+    const a = await createNote("local");
+    await db.notes.update(a.id, { dirty: 0 as const, folderId: null });
+    const incomingSameTime = {
+      id: a.id,
+      body: "server-side",
+      tags: [],
+      importance: 0 as const,
+      createdAt: a.createdAt,
+      updatedAt: a.updatedAt, // 同一updatedAt
+      deleted: 0 as const,
+      folderId: "FOLDER-X",
+    };
+    const { f } = okFetch({ notes: [incomingSameTime] });
+    await runSync("tok", f);
+    const cur = await db.notes.get(a.id);
+    expect(cur?.body).toBe("server-side");
+    expect(cur?.folderId).toBe("FOLDER-X");
+    expect(cur?.dirty).toBe(0);
+  });
+
   it("同期中に入った編集はdirtyのまま残る（スナップショット競合）", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     try {
