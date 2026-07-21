@@ -21,6 +21,9 @@ function okFetch(over: Partial<SyncResponse> = {}) {
 
 describe("runSync", () => {
   it("dirtyなメモだけを送り、dirtyフィールドは含めない", async () => {
+    // full（fullResyncV3未実施時の自動全量）ではなく通常のdirty収集だけを検証したいので、
+    // 既に全量同期済みの端末を装っておく（Fix1で full時は全行dirtyになる仕様のため）
+    await db.meta.put({ key: "fullResyncV3", value: 1 });
     const a = await createNote("a");
     await createNote("b");
     await db.notes.update(a.id, { dirty: 0 as const });
@@ -115,13 +118,13 @@ describe("runSync", () => {
   });
 });
 
-describe("runSync 全量再同期（fullResyncV2）", () => {
-  it("旧バージョンからの更新直後（fullResyncV2フラグが無い）はsince=0で送り、成功後にフラグが立つ", async () => {
+describe("runSync 全量再同期（fullResyncV3）", () => {
+  it("旧バージョンからの更新直後（fullResyncV3フラグが無い）はsince=0で送り、成功後にフラグが立つ", async () => {
     const { f, calls } = okFetch();
     await runSync("tok", f);
     const body = JSON.parse(String(calls[0].init.body));
     expect(body.since).toBe(0);
-    expect((await db.meta.get("fullResyncV2"))?.value).toBeTruthy();
+    expect((await db.meta.get("fullResyncV3"))?.value).toBeTruthy();
   });
 
   it("2回目以降の通常呼び出しはフラグが立っているためlastSyncをsinceに使う", async () => {
@@ -135,7 +138,7 @@ describe("runSync 全量再同期（fullResyncV2）", () => {
   });
 
   it("options.full=trueを渡すと、フラグの有無やlastSyncの値に関わらずsince=0で送る", async () => {
-    await db.meta.put({ key: "fullResyncV2", value: 1 });
+    await db.meta.put({ key: "fullResyncV3", value: 1 });
     await db.meta.put({ key: "lastSync", value: 12345 });
     const { f, calls } = okFetch();
     await runSync("tok", f, { full: true });
@@ -148,10 +151,56 @@ describe("runSync 全量再同期（fullResyncV2）", () => {
     await runSync("tok", f, { full: true });
     expect((await db.meta.get("lastSync"))?.value).toBe(777);
   });
+
+  it("full時はdirtyでない既存メモ・フォルダ・添付もすべて送信される（送信側の全量押し直し・Fix1）", async () => {
+    const a = await createNote("a");
+    await db.notes.update(a.id, { dirty: 0 as const });
+    const b = await createFolder("folder-b", null);
+    await db.folders.update(b.id, { dirty: 0 as const });
+    const att = await addImageFromBlob(a.id, new Blob([new Uint8Array([1])], { type: "image/png" }));
+    await db.attachments.update(att.id, { dirty: 0 as const });
+
+    const { f, calls } = okFetch();
+    await runSync("tok", f, { full: true });
+
+    const syncCall = calls.find((c) => c.url === "/api/sync")!;
+    const body = JSON.parse(String(syncCall.init.body));
+    expect(body.notes.map((n: { id: string }) => n.id)).toContain(a.id);
+    expect(body.folders.map((fl: { id: string }) => fl.id)).toContain(b.id);
+    // 添付は実体があるものだけPUTも走る（Fix1: 件数が少ないので許容する仕様）
+    expect(calls.some((c) => c.url.startsWith("/api/attachments/") && c.init.method === "PUT")).toBe(true);
+  });
+
+  it("full時は削除済み（tombstone）のメモも取りこぼさず送信する", async () => {
+    // 過去の不具合の再現: 削除はしたがdirtyが立たない/消えたままサーバーに届いていない状態
+    const a = await createNote("消される予定だった");
+    await db.notes.update(a.id, { deleted: 1 as const, dirty: 0 as const });
+    const { f, calls } = okFetch();
+    await runSync("tok", f, { full: true });
+    const body = JSON.parse(String(calls[0].init.body));
+    const sent = body.notes.find((n: { id: string }) => n.id === a.id);
+    expect(sent?.deleted).toBe(1);
+  });
+
+  it("2回目以降の通常呼び出しでは全行dirty化は行われず、実際にdirtyな行だけを送る", async () => {
+    await createNote("a");
+    const { f: f1 } = okFetch();
+    await runSync("tok", f1, { full: true }); // fullResyncV3を立てる（送信済みのdirtyは全部クリアされる）
+
+    await createNote("b");
+    const { f: f2, calls } = okFetch();
+    await runSync("tok", f2);
+    const body = JSON.parse(String(calls[0].init.body));
+    expect(body.notes).toHaveLength(1);
+    expect(body.notes[0].body).toBe("b");
+  });
 });
 
 describe("runSync フォルダ", () => {
   it("dirtyなフォルダだけを送り、dirtyフィールドは含めない", async () => {
+    // full（fullResyncV3未実施時の自動全量）ではなく通常のdirty収集だけを検証したいので、
+    // 既に全量同期済みの端末を装っておく（Fix1で full時は全行dirtyになる仕様のため）
+    await db.meta.put({ key: "fullResyncV3", value: 1 });
     const a = await createFolder("a", null);
     await createFolder("b", null);
     await db.folders.update(a.id, { dirty: 0 as const });

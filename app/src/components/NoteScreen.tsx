@@ -156,11 +156,31 @@ export function NoteScreen({ syncBar, slideClass, note, startEditing, onChange, 
       <div className="list-header">
         {syncBar}
         <div className="toolbar">
-          {/* 1段目: 戻る・★★★・スペーサー・保存/編集・削除。画面幅で位置が変わらないよう常にこの並び固定 */}
+          {/* 1段目（案B: iPhoneメモ風）: 戻る・スペーサー・巻き戻し・やり直し・保存/編集。
+              画面幅で位置が変わらないよう常にこの並び固定（undo/redoは編集中のみ表示） */}
           <div className="note-toolbar-row">
             <button className="icon-btn" onClick={onBack} aria-label="戻る">
               <BackIcon />
             </button>
+            <span className="spacer" />
+            {editing && (
+              <>
+                <button className="icon-btn" aria-label="取り消し" disabled={!canUndo(historyRef.current)} onClick={undo}>
+                  <UndoIcon />
+                </button>
+                <button className="icon-btn" aria-label="やり直し" disabled={!canRedo(historyRef.current)} onClick={redo}>
+                  <RedoIcon />
+                </button>
+              </>
+            )}
+            {editing ? (
+              <button className="primary" onClick={save}>保存</button>
+            ) : (
+              <button className="tint acc-amber" onClick={startEdit}>編集</button>
+            )}
+          </div>
+          {/* 2段目（案B）: ★★★・写真・移動…・スペーサー・削除（削除は右端） */}
+          <div className="note-toolbar-row">
             <span className="stars">
               {[1, 2, 3].map((i) => (
                 <button
@@ -172,26 +192,6 @@ export function NoteScreen({ syncBar, slideClass, note, startEditing, onChange, 
                 </button>
               ))}
             </span>
-            <span className="spacer" />
-            {editing ? (
-              <button className="primary" onClick={save}>保存</button>
-            ) : (
-              <button className="tint acc-amber" onClick={startEdit}>編集</button>
-            )}
-            <button className="danger" onClick={onDelete}>削除</button>
-          </div>
-          {/* 2段目: undo・redo・写真・移動…。左寄せで常にこの順（undo/redoは編集中のみ表示） */}
-          <div className="note-toolbar-row">
-            {editing && (
-              <>
-                <button className="icon-btn" aria-label="取り消し" disabled={!canUndo(historyRef.current)} onClick={undo}>
-                  <UndoIcon />
-                </button>
-                <button className="icon-btn" aria-label="やり直し" disabled={!canRedo(historyRef.current)} onClick={redo}>
-                  <RedoIcon />
-                </button>
-              </>
-            )}
             <button className="icon-btn" aria-label="写真を添付" onClick={() => fileInputRef.current?.click()}>
               <ImageIcon />
             </button>
@@ -204,6 +204,8 @@ export function NoteScreen({ syncBar, slideClass, note, startEditing, onChange, 
               onChange={onPickFiles}
             />
             <button className="tint acc-violet" onClick={() => setMovePickerOpen((v) => !v)}>移動…</button>
+            <span className="spacer" />
+            <button className="danger" onClick={onDelete}>削除</button>
           </div>
         </div>
       </div>

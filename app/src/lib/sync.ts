@@ -25,12 +25,25 @@ export async function runSync(
   options?: { full?: boolean }
 ): Promise<SyncResult> {
   // 旧バージョンのクライアントがfolders配列を無視したままlastSyncだけ進めてしまうと、新バージョンに
-  // 更新してもサーバーは「送信済み」と判断し、以後foldersが二度と届かない。fullResyncV2フラグが
+  // 更新してもサーバーは「送信済み」と判断し、以後foldersが二度と届かない。fullResyncV3フラグが
   // 無い（＝このロジック導入後まだ一度も全量同期していない）端末では、通常呼び出しでも一度だけ
   // since=0の全量同期に切り替えて取りこぼしを回収する。適用側はLWWなので全量再受信しても安全
-  const fullResyncDone = (await db.meta.get("fullResyncV2")) !== undefined;
+  const fullResyncDone = (await db.meta.get("fullResyncV3")) !== undefined;
   const full = options?.full === true || !fullResyncDone;
   const since = full ? 0 : Number((await db.meta.get("lastSync"))?.value ?? 0);
+
+  // Fix1: 送信側の全量押し直し。過去の不具合で「サーバーへ届かないままdirtyフラグだけが消えた」
+  // 未送信の行がローカルに残っている疑いがあるため、full時は通常のdirty収集の前に
+  // 全notes・全folders・全attachments（tombstone＝deleted=1の行も含む）のdirtyを1に立てておく。
+  // これで以後の収集で全件が拾われ全量pushされる。LWW（受信側）とpurgedIdsガードがあるため、
+  // 実際には変更が無い行を再送しても冪等で安全。添付は実体（attachmentBlobs）があるものだけPUTが
+  // 走るが、件数は少ないので許容する
+  if (full) {
+    await db.notes.toCollection().modify({ dirty: 1 });
+    await db.folders.toCollection().modify({ dirty: 1 });
+    await db.attachments.toCollection().modify({ dirty: 1 });
+  }
+
   const dirtyNotes = await db.notes.where("dirty").equals(1).toArray();
   const dirtyAtts = await db.attachments.where("dirty").equals(1).toArray();
   const dirtyFolders = await db.folders.where("dirty").equals(1).toArray();
@@ -88,7 +101,7 @@ export async function runSync(
       if (!cur || fl.updatedAt > cur.updatedAt) await db.folders.put({ ...fl, orderKey: fl.orderKey ?? null, dirty: 0 });
     }
     await db.meta.put({ key: "lastSync", value: data.now });
-    if (full) await db.meta.put({ key: "fullResyncV2", value: 1 });
+    if (full) await db.meta.put({ key: "fullResyncV3", value: 1 });
 
     // サーバーで既にpurge済みのidは、上のdirtyクリアや受信適用で幽霊行が
     // 残っていてもここで物理削除して上書きする（削除の伝達漏れ防止・Fix2）。

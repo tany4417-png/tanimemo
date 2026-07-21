@@ -45,6 +45,10 @@ export default function App() {
   // 画面遷移のスライド方向。戻り系（navigateBack・各画面の←ボタン・パンくずで上位へ）で"back"、
   // それ以外の遷移（新規作成・メモを開く・設定/ゴミ箱を開く・フォルダへ入るなど）で"forward"をセットする
   const [navDirection, setNavDirection] = useState<"forward" | "back">("forward");
+  // バックスワイプ（指の追従）が完了して発生した遷移では、ドラッグ自体が遷移の動きなので追加の
+  // slide-inアニメを再生しない（Fix3）。ボタン・パンくず経由の「戻る」や通常の進み操作では
+  // 遷移のたびに毎回falseへ明示的に戻すため、専用のリセット処理は不要
+  const [suppressSlideIn, setSuppressSlideIn] = useState(false);
   const [sort, setSortState] = useState<SortMode>(() => (localStorage.getItem("tanimemo.sort") as SortMode) ?? "created");
   const setSort = (m: SortMode) => {
     localStorage.setItem("tanimemo.sort", m);
@@ -88,6 +92,23 @@ export default function App() {
     const el = dragScreenEl.current;
     if (el && followingBack.current) {
       el.style.transition = "transform 150ms ease";
+      el.style.transform = "translateX(0px)";
+    }
+    backSwipeStart.current = null;
+    followingBack.current = false;
+    setIsFollowingBack(false);
+    dragScreenEl.current = null;
+  }, []);
+
+  // バックスワイプが完了（しきい値超え）した場合の後始末。ドラッグ自体が遷移の動きなので、
+  // resetBackSwipe（キャンセル時の150ms巻き戻し）と違い、transitionを掛けずに即座にtranslateX(0)へ
+  // リセットする。この直後にslide-inアニメ無しで新しい内容へ切り替わるため、ここで動きを作らない（Fix3）
+  const completeBackSwipe = useCallback(() => {
+    window.clearTimeout(backSwipeWatchdog.current);
+    backSwipeWatchdog.current = undefined;
+    const el = dragScreenEl.current;
+    if (el) {
+      el.style.transition = "none";
       el.style.transform = "translateX(0px)";
     }
     backSwipeStart.current = null;
@@ -251,6 +272,7 @@ export default function App() {
   // "それ以外の遷移"（進み操作）用のsetViewラッパ。navDirectionを"forward"にしてから画面を切り替える
   const goForward = useCallback((v: View) => {
     setNavDirection("forward");
+    setSuppressSlideIn(false);
     setView(v);
   }, []);
 
@@ -262,37 +284,49 @@ export default function App() {
   // フォルダカードで下の階層へ入る（進み操作＝forward）
   const onOpenFolder = useCallback((id: string | null) => {
     setNavDirection("forward");
+    setSuppressSlideIn(false);
     setCurrentFolderId(id);
   }, []);
 
-  // パンくずで上位の階層へ戻る（戻り操作＝back）。折りたたみ済みの祖先idをそのまま受け取るだけなので計算不要
+  // パンくずで上位の階層へ戻る（戻り操作＝back）。折りたたみ済みの祖先idをそのまま受け取るだけなので計算不要。
+  // バックスワイプ経由ではない明示操作なので、従来どおりスライドインを再生する
   const onNavigateUp = useCallback((id: string | null) => {
     setNavDirection("back");
+    setSuppressSlideIn(false);
     setCurrentFolderId(id);
   }, []);
 
-  // 背景の右フリックで戻る先。メモ→一覧、設定→一覧、ゴミ箱→設定、一覧(フォルダ内)→親フォルダ、
+  // 「戻る」遷移先を決めて状態を更新する本体。メモ→一覧、設定→一覧、ゴミ箱→設定、一覧(フォルダ内)→親フォルダ、
   // 一覧(ルート)→何もしない。folderPathListはルート→現在フォルダの順の祖先列なので、
-  // 末尾の1つ手前が親フォルダ（無ければ最上位でnull）
-  const navigateBack = useCallback(() => {
-    setNavDirection("back");
-    if (view.name === "note") {
-      setView({ name: "list" });
-      return;
-    }
-    if (view.name === "settings") {
-      setView({ name: "list" });
-      return;
-    }
-    if (view.name === "trash") {
-      setView({ name: "settings" });
-      return;
-    }
-    if (view.name === "list" && currentFolderId !== null) {
-      const parent = folderPathList.length >= 2 ? folderPathList[folderPathList.length - 2].id : null;
-      setCurrentFolderId(parent);
-    }
-  }, [view, currentFolderId, folderPathList]);
+  // 末尾の1つ手前が親フォルダ（無ければ最上位でnull）。
+  // silent=trueは完了済みバックスワイプ専用（Fix3）: ドラッグ自体が遷移の動きなので、この遷移では
+  // slide-inアニメを再生しない。ボタン・パンくず経由の「戻る」はfalseで従来どおり再生する
+  const performBack = useCallback(
+    (silent: boolean) => {
+      setNavDirection("back");
+      setSuppressSlideIn(silent);
+      if (view.name === "note") {
+        setView({ name: "list" });
+        return;
+      }
+      if (view.name === "settings") {
+        setView({ name: "list" });
+        return;
+      }
+      if (view.name === "trash") {
+        setView({ name: "settings" });
+        return;
+      }
+      if (view.name === "list" && currentFolderId !== null) {
+        const parent = folderPathList.length >= 2 ? folderPathList[folderPathList.length - 2].id : null;
+        setCurrentFolderId(parent);
+      }
+    },
+    [view, currentFolderId, folderPathList]
+  );
+
+  // ボタン・パンくず経由の「戻る」。バックスワイプの完了とは異なり、従来どおりスライドインを再生する
+  const navigateBack = useCallback(() => performBack(false), [performBack]);
 
   // 戻り先が無い場面（一覧ルート）かどうか。navigateBackの分岐と対応させておき、falseなら追従自体を始めない
   const canGoBack = view.name !== "list" || currentFolderId !== null;
@@ -360,10 +394,16 @@ export default function App() {
       const dx = e.clientX - start.x;
       const vx = dx / Math.max(1, Date.now() - start.t);
       const complete = shouldCompleteBack(dx, vx);
-      resetBackSwipe();
-      if (complete) navigateBack();
+      if (complete) {
+        // 完了: ドラッグ自体が遷移の動きなので、150msの巻き戻しもslide-inの再生もしない（Fix3）
+        completeBackSwipe();
+        performBack(true);
+      } else {
+        // キャンセル（しきい値未満）: 従来どおり150msで0へ戻す
+        resetBackSwipe();
+      }
     },
-    [navigateBack, resetBackSwipe]
+    [completeBackSwipe, performBack, resetBackSwipe]
   );
 
   // pointercancel（中断）でも追従中なら0へ戻し、状態を片付ける
@@ -574,8 +614,9 @@ export default function App() {
     />
   );
 
-  // navDirectionに応じたスライドイン方向のクラス（戻り=左から、進み=右から）
-  const slideClass = navDirection === "back" ? "slide-in-left" : "slide-in-right";
+  // navDirectionに応じたスライドイン方向のクラス（戻り=左から、進み=右から）。
+  // バックスワイプ完了時（suppressSlideIn）はドラッグ自体が遷移の動きなので、このクラスは付けない（Fix3）
+  const slideClass = suppressSlideIn ? "" : navDirection === "back" ? "slide-in-left" : "slide-in-right";
 
   return (
     <main
@@ -615,7 +656,6 @@ export default function App() {
           }}
           isBrowsingFolder={isBrowsingFolder}
           currentFolderId={currentFolderId}
-          navDirection={navDirection}
           folderPath={folderPathList}
           childFolders={childFolders}
           onOpenFolder={onOpenFolder}

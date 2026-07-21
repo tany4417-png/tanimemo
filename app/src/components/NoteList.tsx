@@ -33,9 +33,9 @@ type Props = {
   // 検索・タグ絞り込み中はフォルダ横断表示になるモード。App側の判定を一本化して受け取る
   isBrowsingFolder: boolean;
   currentFolderId: string | null;
-  // 画面遷移のスライド方向（App.tsxのnavDirection）。フォルダ間移動時のコンテンツ部アニメに使う
-  navDirection: "forward" | "back";
-  // 画面切替（list/note/settings/trash）のスライドインクラス（slide-in-left/right）。ルート要素(.screen)に直接付ける
+  // 画面切替（list/note/settings/trash）・フォルダ間移動共通のスライドインクラス（slide-in-left/right、
+  // またはバックスワイプ完了時は空文字＝Fix3）。ルート要素(.screen)とフォルダ間移動時のコンテンツ部の
+  // 両方に同じ値を使う（App.tsxのnavDirection・suppressSlideInから計算済み）
   slideClass: string;
   folderPath: Folder[];
   childFolders: Folder[];
@@ -114,9 +114,10 @@ export function NoteList(p: Props) {
         {/* 内容が短くてもラバーバンドさせるため、中身全体を.bounce-areaで1枚ラップする（常にコンテナ＋1pxの高さ） */}
         <div className="bounce-area">
           {/* フォルダ間の移動でもスライドアニメを効かせるため、コンテンツ部だけkey={currentFolderId}で再マウントする。
-              ヘッダー（.list-header）は含めない＝もうstickyではないがフォルダ移動時もガタつかせない */}
+              ヘッダー（.list-header）は含めない＝もうstickyではないがフォルダ移動時もガタつかせない。
+              クラスは外側の.screenと同じp.slideClassを使う（バックスワイプ完了時は空文字で二重遷移を防ぐ・Fix3） */}
           <div
-            className={`list-content ${p.navDirection === "back" ? "slide-in-left" : "slide-in-right"}`}
+            className={`list-content ${p.slideClass}`}
             key={p.currentFolderId ?? "root"}
           >
             {isBrowsingFolder &&
