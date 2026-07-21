@@ -339,7 +339,10 @@ export default function App() {
   const onMainPointerDown = useCallback(
     (e: ReactPointerEvent<HTMLElement>) => {
       const target = e.target as HTMLElement;
-      if (!canGoBack || target.closest(".card, .swipe-wrap, button, a, input, textarea, select, .breadcrumb, .tagbar, .overlay")) {
+      if (
+        !canGoBack ||
+        target.closest(".card, .swipe-wrap, button, a, input, textarea, select, .breadcrumb, .tagbar, .overlay, .gallery, img")
+      ) {
         backSwipeStart.current = null;
         return;
       }

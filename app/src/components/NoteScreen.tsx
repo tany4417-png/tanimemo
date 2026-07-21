@@ -2,10 +2,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { addImageFromBlob, getImageBlob } from "../lib/attachments";
 import { accentClassFor } from "../lib/colors";
+import { downloadUrlSpec } from "../lib/dragout";
+import { mimeToExt } from "../lib/export";
 import { flattenFolderTree, listAllFolders } from "../lib/folders";
 import { canRedo, canUndo, histInit, histPush, histRedo, histUndo, type Hist } from "../lib/history";
 import { renderMarkdown, toggleCheckbox } from "../lib/markdown";
-import type { Note } from "../lib/types";
+import type { AttachmentMeta, Note } from "../lib/types";
 import { BackIcon, ImageIcon, RedoIcon, UndoIcon } from "./icons";
 import { useAttachmentUrls } from "./useAttachmentUrls";
 
@@ -262,21 +264,55 @@ export function NoteScreen({ syncBar, slideClass, note, startEditing, onChange, 
 export function Gallery({ noteId }: { noteId: string }) {
   // 一覧グリッドは軽いサムネイル、原寸オーバーレイだけ本体blobを使う（一覧・起動を重くしないため）
   const { metas, urls } = useAttachmentUrls(noteId, undefined, { thumb: true });
+  // OSへのドラッグアウト用に、原寸blobのobjectURLも別途用意する（サムネのままだと画質が粗いため）。
+  // 未取得（オフライン等でfetchが失敗した添付）はurlsに入らず、その添付はドラッグアウト無効のまま表示される
+  const { urls: fullUrls } = useAttachmentUrls(noteId, undefined, { thumb: false });
   const [fullId, setFullId] = useState<string | null>(null);
   const fullUrl = useFullImageUrl(fullId);
 
   return (
     <>
       <div className="gallery">
-        {metas.map((m) => urls[m.id] && <img key={m.id} className="thumb" src={urls[m.id]} onClick={() => setFullId(m.id)} alt="" />)}
+        {metas.map(
+          (m) =>
+            urls[m.id] && (
+              <img
+                key={m.id}
+                className="thumb"
+                src={urls[m.id]}
+                onClick={() => setFullId(m.id)}
+                draggable={Boolean(fullUrls[m.id])}
+                onDragStart={(e) => onImageDragStart(e, m, fullUrls[m.id])}
+                alt=""
+              />
+            )
+        )}
       </div>
       {fullId && fullUrl && (
         <div className="overlay" onClick={() => setFullId(null)}>
-          <img src={fullUrl} alt="" />
+          <img
+            src={fullUrl}
+            draggable
+            onDragStart={(e) => {
+              const meta = metas.find((mm) => mm.id === fullId);
+              if (meta) onImageDragStart(e, meta, fullUrl);
+            }}
+            alt=""
+          />
         </div>
       )}
     </>
   );
+}
+
+// ギャラリー画像のdragstart（同期処理）。ChromiumのDownloadURL形式でOS側へファイル生成の手がかりを渡す。
+// fullUrl未取得（オフライン等）のときは何もしない（draggable={false}にしているので通常はここへ来ない）
+function onImageDragStart(e: React.DragEvent<HTMLImageElement>, att: AttachmentMeta, fullUrl: string | undefined): void {
+  if (!fullUrl) return;
+  const filename = `タニメモ-画像-${att.id.slice(-6)}.${mimeToExt(att.mime)}`;
+  e.dataTransfer.setData("DownloadURL", downloadUrlSpec(att.mime, filename, fullUrl));
+  e.dataTransfer.setData("text/uri-list", fullUrl);
+  e.dataTransfer.effectAllowed = "copy";
 }
 
 // 原寸オーバーレイ表示中だけ、対象1件の本体blobを取りに行く（サムネと違い全件を先読みしない）
