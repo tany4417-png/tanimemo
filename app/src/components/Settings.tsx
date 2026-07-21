@@ -1,5 +1,21 @@
 import { useState } from "react";
+import { useLiveQuery } from "dexie-react-hooks";
+import { collectDiagnostics, type Diagnostics } from "../lib/diagnostics";
 import { BackIcon, ExportIcon, TrashIcon } from "./icons";
+
+// 診断パネルの表示・コピー用にテキスト整形する（コンポーネント専用の純関数のため単体テストは設けていない。
+// 集計自体はlib/diagnostics.tsのcollectDiagnosticsでテスト済み）
+function formatDiagnosticsText(d: Diagnostics): string {
+  const lastSync = d.lastSync ? new Date(d.lastSync).toLocaleString("ja-JP") : "未同期";
+  return [
+    `バージョン: ${d.version}`,
+    `最終同期: ${lastSync}`,
+    `全量同期(fullResyncV3): ${d.fullResyncDone ? "実施済み" : "未実施"}`,
+    `メモ: 総数${d.notes.total} / ゴミ箱${d.notes.trashCount} / dirty${d.notes.dirty}`,
+    `フォルダ: 総数${d.folders.total} / dirty${d.folders.dirty}`,
+    `添付: メタ${d.attachments.metaCount} / dirty${d.attachments.dirty} / ローカル実体${d.attachments.blobCount}`,
+  ].join("\n");
+}
 
 type Props = {
   syncBar: React.ReactNode;
@@ -14,6 +30,7 @@ type Props = {
 
 export function Settings({ syncBar, slideClass, token, onSave, onBack, onExport, onTrash }: Props) {
   const [value, setValue] = useState(token);
+  const diagnostics = useLiveQuery(collectDiagnostics, [], null);
 
   // PCと端末とで表示中のビルドがずれる問題の再発防止。SWがあれば更新チェックしてから、
   // どちらにせよ1秒後にリロードする（SW未対応環境ではリロードのみ行う）
@@ -56,6 +73,29 @@ export function Settings({ syncBar, slideClass, token, onSave, onBack, onExport,
           <button className="tint acc-blue" onClick={() => void updateApp()}>
             アプリを更新
           </button>
+          <hr />
+          <details className="diag">
+            <summary>同期の診断</summary>
+            {diagnostics && (
+              <div className="diag-body">
+                <p>バージョン: {diagnostics.version}</p>
+                <p>最終同期: {diagnostics.lastSync ? new Date(diagnostics.lastSync).toLocaleString("ja-JP") : "未同期"}</p>
+                <p>全量同期(fullResyncV3): {diagnostics.fullResyncDone ? "実施済み" : "未実施"}</p>
+                <p>メモ: 総数{diagnostics.notes.total} / ゴミ箱{diagnostics.notes.trashCount} / dirty{diagnostics.notes.dirty}</p>
+                <p>フォルダ: 総数{diagnostics.folders.total} / dirty{diagnostics.folders.dirty}</p>
+                <p>
+                  添付: メタ{diagnostics.attachments.metaCount} / dirty{diagnostics.attachments.dirty} / ローカル実体
+                  {diagnostics.attachments.blobCount}
+                </p>
+                <button
+                  className="tint acc-teal"
+                  onClick={() => void navigator.clipboard.writeText(formatDiagnosticsText(diagnostics))}
+                >
+                  診断情報をコピー
+                </button>
+              </div>
+            )}
+          </details>
         </div>
       </div>
     </div>

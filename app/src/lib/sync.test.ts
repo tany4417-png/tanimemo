@@ -280,3 +280,79 @@ describe("runSync 添付アップロード", () => {
     expect(uploadCalls[0].url).not.toContain("thumb");
   });
 });
+
+describe("runSync 添付アップロード失敗時のスキップ（画像1件の失敗で全体を止めない）", () => {
+  // 添付PUTだけを失敗させ、/api/syncは通常どおり応答するfetchモック。shouldFailUrlに一致するPUT先だけ
+  // 500を返し、他（/api/attachments/の別idや/api/sync）は成功応答を返す
+  function partialFailFetch(shouldFailUrl: (url: string) => boolean, over: Partial<SyncResponse> = {}) {
+    const calls: { url: string; init: RequestInit }[] = [];
+    const f = (async (url: RequestInfo | URL, init?: RequestInit) => {
+      const u = String(url);
+      calls.push({ url: u, init: init ?? {} });
+      if (u.startsWith("/api/attachments/") && shouldFailUrl(u)) {
+        return new Response("upload error", { status: 500 });
+      }
+      return new Response(JSON.stringify({ now: 1000, notes: [], attachments: [], ...over }));
+    }) as typeof fetch;
+    return { f, calls };
+  }
+
+  it("(a) 添付PUTが失敗しても/api/syncは実行され、メモ本文の同期は止まらない", async () => {
+    await createNote("body-note"); // dirtyなメモ。添付PUT失敗に巻き込まれず送信されることを確認する
+    await addImageFromBlob("N1", new Blob([new Uint8Array([1])], { type: "image/png" }));
+    const { f, calls } = partialFailFetch(() => true);
+
+    const result = await runSync("tok", f);
+
+    const syncCall = calls.find((c) => c.url === "/api/sync");
+    expect(syncCall).toBeDefined();
+    const body = JSON.parse(String(syncCall!.init.body));
+    expect(body.notes.some((n: { body: string }) => n.body === "body-note")).toBe(true);
+    expect(await db.notes.where("dirty").equals(1).count()).toBe(0); // メモ側は従来どおり成功
+    expect(result.failedAttachments).toBe(1);
+  });
+
+  it("(b) 失敗した添付のdirtyは残る（次回リトライ対象のまま）", async () => {
+    const meta = await addImageFromBlob("N1", new Blob([new Uint8Array([1])], { type: "image/png" }));
+    const { f } = partialFailFetch(() => true);
+
+    await runSync("tok", f);
+
+    const cur = await db.attachments.get(meta.id);
+    expect(cur?.dirty).toBe(1);
+  });
+
+  it("(c) failedAttachmentsは失敗した添付だけを数え、成功した分は含まない", async () => {
+    const ok = await addImageFromBlob("N1", new Blob([new Uint8Array([1])], { type: "image/png" }));
+    const bad = await addImageFromBlob("N2", new Blob([new Uint8Array([2])], { type: "image/png" }));
+    const { f } = partialFailFetch((u) => u.includes(bad.id));
+
+    const result = await runSync("tok", f);
+
+    expect(result.failedAttachments).toBe(1);
+    expect((await db.attachments.get(ok.id))?.dirty).toBe(0);
+    expect((await db.attachments.get(bad.id))?.dirty).toBe(1);
+  });
+
+  it("(d) 添付PUTが例外を投げても（ネットワーク断など）握りつぶしてスキップし、failedAttachmentsに数える", async () => {
+    await addImageFromBlob("N1", new Blob([new Uint8Array([1])], { type: "image/png" }));
+    const f = (async (url: RequestInfo | URL) => {
+      if (String(url).startsWith("/api/attachments/")) throw new Error("network down");
+      return new Response(JSON.stringify({ now: 1000, notes: [], attachments: [] }));
+    }) as typeof fetch;
+
+    const result = await runSync("tok", f);
+
+    expect(result.failedAttachments).toBe(1);
+  });
+
+  it("全件成功時はfailedAttachments=0で従来どおりdirtyがクリアされる", async () => {
+    const meta = await addImageFromBlob("N1", new Blob([new Uint8Array([1])], { type: "image/png" }));
+    const { f } = okFetch();
+
+    const result = await runSync("tok", f);
+
+    expect(result.failedAttachments).toBe(0);
+    expect((await db.attachments.get(meta.id))?.dirty).toBe(0);
+  });
+});

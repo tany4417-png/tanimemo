@@ -190,6 +190,11 @@ button.icon-btn { width: 36px; height: 36px; padding: 0; background: var(--card)
    .note/.settingsの上書きルールより後ろに置く＝同じ詳細度(2クラス)のためソース順で決着し、
    .note .bounce-areaのmin-height:0をここのcalc(100% + 1px)が上書きしてラバーバンドを成立させる */
 .screen-body > .bounce-area { min-height: calc(100% + 1px); }
+/* 設定画面の「同期の診断」折りたたみパネル。summary自体はクリック可能なことが分かるようポインタにするだけで、
+   中身(.diag-body)は他の設定項目と同じ縦積み+gapに合わせて段落の余白を詰める */
+.diag summary { cursor: pointer; }
+.diag-body { display: flex; flex-direction: column; gap: 4px; padding-top: 8px; font-size: 13px; color: var(--ink-soft, #6b6455); }
+.diag-body button { align-self: flex-start; margin-top: 4px; }
 .gallery { display: flex; gap: 8px; flex-wrap: wrap; padding: 10px 0; }
 .thumb { width: 96px; height: 96px; object-fit: cover; border-radius: 8px; border: 1px solid var(--rule); cursor: pointer; }
 .overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.85); display: flex; align-items: center; justify-content: center; z-index: 10; }

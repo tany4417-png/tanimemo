@@ -60,6 +60,8 @@ export default function App() {
   const [token, setToken] = useState(() => localStorage.getItem("tanimemo.token") ?? "");
   const [status, setStatus] = useState<"idle" | "syncing" | "offline" | "error">("idle");
   const [lastSync, setLastSync] = useState<number | null>(null);
+  // 直近のrunSyncで失敗した添付PUTの件数。0より大きい間はSyncStatusのラベルに「次回再送」の注記を出す
+  const [failedAttachments, setFailedAttachments] = useState(0);
   const timer = useRef<number | undefined>(undefined);
   const syncing = useRef(false);
   // main（.app）要素そのものへの参照。追従スワイプ中に現在マウント中の.screenをquerySelectorで
@@ -159,7 +161,8 @@ export default function App() {
     syncing.current = true;
     setStatus("syncing");
     try {
-      await runSync(token);
+      const result = await runSync(token);
+      setFailedAttachments(result.failedAttachments);
       await repairOrphansSafely();
       setStatus("idle");
       setLastSync(Date.now());
@@ -605,6 +608,7 @@ export default function App() {
       status={status}
       pending={pending}
       lastSync={lastSync}
+      failedAttachments={failedAttachments}
       canUndo={stacks.past.length > 0}
       canRedo={stacks.future.length > 0}
       onUndo={() => void onUndo()}

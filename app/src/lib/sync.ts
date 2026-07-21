@@ -2,7 +2,7 @@ import { db } from "./db";
 import { thumbKey } from "./attachments";
 import type { AttachmentMeta, Folder, Note, SyncResponse } from "./types";
 
-export type SyncResult = { pushed: number; pulled: number };
+export type SyncResult = { pushed: number; pulled: number; failedAttachments: number };
 
 function stripNote(n: Note) {
   const { dirty: _dirty, ...rest } = n;
@@ -48,15 +48,22 @@ export async function runSync(
   const dirtyAtts = await db.attachments.where("dirty").equals(1).toArray();
   const dirtyFolders = await db.folders.where("dirty").equals(1).toArray();
 
+  // 添付PUTは1件失敗しても他の添付・メモ本文の同期まで巻き込んで止めない。失敗したidはfailedAttachmentIdsに
+  // 集めて後段のdirtyクリアから除外する（＝そのidのdirtyは1のまま残り、次回のrunSyncで再送される）
+  const failedAttachmentIds = new Set<string>();
   for (const a of dirtyAtts) {
     const rec = await db.attachmentBlobs.get(a.id);
     if (!rec) continue;
-    const up = await fetchFn(`/api/attachments/${a.id}?noteId=${a.noteId}`, {
-      method: "PUT",
-      headers: { "Content-Type": a.mime, Authorization: `Bearer ${token}` },
-      body: rec.blob,
-    });
-    if (!up.ok) throw new Error(`attachment upload failed: ${up.status}`);
+    try {
+      const up = await fetchFn(`/api/attachments/${a.id}?noteId=${a.noteId}`, {
+        method: "PUT",
+        headers: { "Content-Type": a.mime, Authorization: `Bearer ${token}` },
+        body: rec.blob,
+      });
+      if (!up.ok) throw new Error(`attachment upload failed: ${up.status}`);
+    } catch {
+      failedAttachmentIds.add(a.id);
+    }
   }
 
   const res = await fetchFn("/api/sync", {
@@ -81,6 +88,7 @@ export async function runSync(
       if (cur && cur.updatedAt === n.updatedAt) await db.notes.update(n.id, { dirty: 0 });
     }
     for (const a of dirtyAtts) {
+      if (failedAttachmentIds.has(a.id)) continue; // アップロード失敗分は次回リトライのためdirtyを維持する
       const cur = await db.attachments.get(a.id);
       if (cur && cur.updatedAt === a.updatedAt) await db.attachments.update(a.id, { dirty: 0 });
     }
@@ -124,5 +132,6 @@ export async function runSync(
   return {
     pushed: dirtyNotes.length + dirtyAtts.length + dirtyFolders.length,
     pulled: data.notes.length + data.attachments.length + folders.length,
+    failedAttachments: failedAttachmentIds.size,
   };
 }
