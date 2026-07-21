@@ -63,6 +63,16 @@ export async function addImageFromBlob(noteId: string, blob: Blob): Promise<Atta
   return meta;
 }
 
+// 添付1枚の個別削除（2026-07-21 オーナー要望）。メモ本体と同じtombstone方式で、deleted=1が
+// 同期で他端末へ伝わり、30日の期限purgeでD1・R2実体ごと消える。取り消しはrestoreAttachmentで行う
+export async function softDeleteAttachment(id: string): Promise<void> {
+  await db.attachments.update(id, { deleted: 1, updatedAt: Date.now(), dirty: 1 });
+}
+
+export async function restoreAttachment(id: string): Promise<void> {
+  await db.attachments.update(id, { deleted: 0, updatedAt: Date.now(), dirty: 1 });
+}
+
 async function fetchAndCacheBlob(id: string, token: string, fetchFn: typeof fetch): Promise<Blob | null> {
   let res: Response;
   try {

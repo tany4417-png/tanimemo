@@ -6,7 +6,7 @@ import { Settings } from "./components/Settings";
 import { SyncStatus } from "./components/SyncStatus";
 import { TrashScreen } from "./components/TrashScreen";
 import { popRedo, popUndo, pushAction, type ActionStacks } from "./lib/actions";
-import { addImageFromBlob } from "./lib/attachments";
+import { addImageFromBlob, restoreAttachment, softDeleteAttachment } from "./lib/attachments";
 import { db } from "./lib/db";
 import { exportZip, localYmd } from "./lib/export";
 import {
@@ -734,6 +734,17 @@ export default function App() {
           onBack={navigateBack}
           onMoveNote={onMoveNote}
           onAttached={() => scheduleSync()}
+          onDeleteAttachment={(attId) => {
+            void runAction(
+              "画像を削除",
+              async () => {
+                await softDeleteAttachment(attId);
+              },
+              async () => {
+                await restoreAttachment(attId);
+              }
+            );
+          }}
         />
       )}
       {view.name === "settings" && (

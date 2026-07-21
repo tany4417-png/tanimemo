@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { db, resetDbForTests } from "./db";
-import { addImageFromBlob, getImageBlob, thumbKey } from "./attachments";
+import { addImageFromBlob, getImageBlob, restoreAttachment, softDeleteAttachment, thumbKey } from "./attachments";
 
 beforeEach(async () => {
   await resetDbForTests();
@@ -31,6 +31,29 @@ describe("addImageFromBlob", () => {
     expect(thumbRec).toBeDefined();
     // attachments（メタ）テーブルにはサムネ用の行が作られない＝export/syncの走査対象に混ざらない
     expect(await db.attachments.get(thumbKey(meta.id))).toBeUndefined();
+  });
+});
+
+describe("softDeleteAttachment / restoreAttachment", () => {
+  it("softDeleteでdeleted=1・dirty=1になり、updatedAtが進む", async () => {
+    const meta = await addImageFromBlob("N", new Blob([new Uint8Array([1])], { type: "image/png" }));
+    await db.attachments.update(meta.id, { dirty: 0 });
+    await new Promise((r) => setTimeout(r, 10));
+    await softDeleteAttachment(meta.id);
+    const cur = await db.attachments.get(meta.id);
+    expect(cur?.deleted).toBe(1);
+    expect(cur?.dirty).toBe(1);
+    expect(cur && cur.updatedAt > meta.updatedAt).toBe(true);
+  });
+
+  it("restoreでdeleted=0に戻り、dirty=1が付く", async () => {
+    const meta = await addImageFromBlob("N", new Blob([new Uint8Array([1])], { type: "image/png" }));
+    await softDeleteAttachment(meta.id);
+    await db.attachments.update(meta.id, { dirty: 0 });
+    await restoreAttachment(meta.id);
+    const cur = await db.attachments.get(meta.id);
+    expect(cur?.deleted).toBe(0);
+    expect(cur?.dirty).toBe(1);
   });
 });
 

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useLiveQuery } from "dexie-react-hooks";
 import { addImageFromBlob, getImageBlob } from "../lib/attachments";
 import { accentClassFor } from "../lib/colors";
@@ -27,9 +28,11 @@ type Props = {
   onMoveNote: (noteId: string, folderId: string | null) => void;
   // 画像添付が完了したときに呼ばれる（App側でscheduleSyncするためのフック）
   onAttached?: () => void;
+  // 添付1枚の個別削除。App側でundo登録・同期スケジュールまで面倒を見る
+  onDeleteAttachment: (attId: string) => void;
 };
 
-export function NoteScreen({ syncBar, slideClass, note, startEditing, onChange, onDelete, onBack, onMoveNote, onAttached }: Props) {
+export function NoteScreen({ syncBar, slideClass, note, startEditing, onChange, onDelete, onBack, onMoveNote, onAttached, onDeleteAttachment }: Props) {
   const [editing, setEditing] = useState(startEditing ?? false);
   const [draft, setDraft] = useState(note.body);
   const [movePickerOpen, setMovePickerOpen] = useState(false);
@@ -237,8 +240,9 @@ export function NoteScreen({ syncBar, slideClass, note, startEditing, onChange, 
         <div className="bounce-area">
           {editing ? (
             <>
-              {/* 編集中は貼った画像がすぐ見えるよう、ギャラリーを本文入力欄の上に置く（2026-07-21 オーナー要望） */}
-              <Gallery noteId={note.id} />
+              {/* 編集中は貼った画像がすぐ見えるよう、ギャラリーを本文入力欄の上に置く（2026-07-21 オーナー要望）。
+                  ×バッジ（1枚ずつ削除）も編集中だけ出す */}
+              <Gallery noteId={note.id} showDeleteBadges onDeleteAttachment={onDeleteAttachment} />
               <textarea
                 ref={textareaRef}
                 className="editor"
@@ -255,7 +259,7 @@ export function NoteScreen({ syncBar, slideClass, note, startEditing, onChange, 
               {note.body.trim() !== "" && (
                 <div className="note-view" onClick={clickView} dangerouslySetInnerHTML={{ __html: html }} />
               )}
-              <Gallery noteId={note.id} />
+              <Gallery noteId={note.id} onDeleteAttachment={onDeleteAttachment} />
             </>
           )}
         </div>
@@ -264,7 +268,16 @@ export function NoteScreen({ syncBar, slideClass, note, startEditing, onChange, 
   );
 }
 
-export function Gallery({ noteId }: { noteId: string }) {
+export function Gallery({
+  noteId,
+  showDeleteBadges,
+  onDeleteAttachment,
+}: {
+  noteId: string;
+  // 編集中だけ各サムネの角に×バッジ（1枚ずつ削除）を出す
+  showDeleteBadges?: boolean;
+  onDeleteAttachment?: (attId: string) => void;
+}) {
   // 一覧グリッドは軽いサムネイル、原寸オーバーレイだけ本体blobを使う（一覧・起動を重くしないため）
   const { metas, urls } = useAttachmentUrls(noteId, undefined, { thumb: true });
   // OSへのドラッグアウト用に、原寸blobのobjectURLも別途用意する（サムネのままだと画質が粗いため）。
@@ -279,31 +292,56 @@ export function Gallery({ noteId }: { noteId: string }) {
         {metas.map(
           (m) =>
             urls[m.id] && (
-              <img
-                key={m.id}
-                className="thumb"
-                src={urls[m.id]}
-                onClick={() => setFullId(m.id)}
-                draggable={Boolean(fullUrls[m.id])}
-                onDragStart={(e) => onImageDragStart(e, m, fullUrls[m.id])}
-                alt=""
-              />
+              <span key={m.id} className="thumb-wrap">
+                <img
+                  className="thumb"
+                  src={urls[m.id]}
+                  onClick={() => setFullId(m.id)}
+                  draggable={Boolean(fullUrls[m.id])}
+                  onDragStart={(e) => onImageDragStart(e, m, fullUrls[m.id])}
+                  alt=""
+                />
+                {showDeleteBadges && onDeleteAttachment && (
+                  <button className="thumb-x" aria-label="この画像を削除" onClick={() => onDeleteAttachment(m.id)}>
+                    ×
+                  </button>
+                )}
+              </span>
             )
         )}
       </div>
-      {fullId && fullUrl && (
-        <div className="overlay" onClick={() => setFullId(null)}>
-          <img
-            src={fullUrl}
-            draggable
-            onDragStart={(e) => {
-              const meta = metas.find((mm) => mm.id === fullId);
-              if (meta) onImageDragStart(e, meta, fullUrl);
-            }}
-            alt=""
-          />
-        </div>
-      )}
+      {/* 原寸表示はbody直下へポータルで描画する。バックスワイプのキャンセルで.screenに
+          transform（translateX(0px)）が残ると、fixedの基準が.screenにすり替わり
+          .screen-bodyのoverflowでヘッダー分だけ上が見切れるため（2026-07-21 iPhoneで発覚） */}
+      {fullId &&
+        fullUrl &&
+        createPortal(
+          <div className="overlay" onClick={() => setFullId(null)}>
+            <img
+              src={fullUrl}
+              draggable
+              onDragStart={(e) => {
+                const meta = metas.find((mm) => mm.id === fullId);
+                if (meta) onImageDragStart(e, meta, fullUrl);
+              }}
+              alt=""
+            />
+            {onDeleteAttachment && (
+              <button
+                className="danger overlay-delete"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const id = fullId;
+                  setFullId(null);
+                  onDeleteAttachment(id);
+                }}
+              >
+                この画像を削除
+              </button>
+            )}
+          </div>,
+          document.body
+        )}
     </>
   );
 }
