@@ -1,7 +1,6 @@
 export type NoteRecord = {
   id: string;
   body: string;
-  tags: string[];
   importance: number;
   createdAt: number;
   updatedAt: number;
@@ -10,6 +9,10 @@ export type NoteRecord = {
   folderId?: string | null;
   // 旧クライアントはこのフィールド自体を送らないことがある（upsertNoteはその場合order_keyを現状維持する）
   orderKey?: number | null;
+  // 旧クライアント互換シム: タグ機能は削除済み（migration 0007）だが、SW更新前の旧クライアントが
+  // pull応答のtags欠落で描画クラッシュしないよう、応答にのみ空配列を付けて返す（push側は一切読まない）。
+  // 両端末の更新確認後に撤去する
+  tags?: string[];
 };
 
 export type AttachmentRecord = {

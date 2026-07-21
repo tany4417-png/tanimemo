@@ -12,7 +12,7 @@ export async function handleShare(req: Request, env: Env): Promise<Response> {
   const now = Date.now();
   const noteId = ulid();
   const body = hasText ? (text as string).trim().replace(/\r\n?/g, "\n") : "";
-  await upsertNote(env.DB, { id: noteId, body, tags: [], importance: 0, createdAt: now, updatedAt: now, deleted: 0, folderId: null });
+  await upsertNote(env.DB, { id: noteId, body, importance: 0, createdAt: now, updatedAt: now, deleted: 0, folderId: null });
 
   for (const f of files) {
     const attId = ulid();

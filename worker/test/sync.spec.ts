@@ -4,7 +4,7 @@ import { describe, it, expect, afterEach } from "vitest";
 const AUTH = { "Content-Type": "application/json", Authorization: "Bearer test-token" };
 
 function note(over: Record<string, unknown> = {}) {
-  return { id: "01NOTE", body: "hello", tags: ["メモ"], importance: 0, createdAt: 100, updatedAt: 100, deleted: 0, ...over };
+  return { id: "01NOTE", body: "hello", importance: 0, createdAt: 100, updatedAt: 100, deleted: 0, ...over };
 }
 
 async function sync(body: unknown) {
@@ -29,9 +29,21 @@ describe("/api/sync", () => {
     const data = await (await sync({ since: 0, notes: [], attachments: [] })).json() as any;
     expect(data.notes).toHaveLength(1);
     expect(data.notes[0].body).toBe("hello");
-    expect(data.notes[0].tags).toEqual(["メモ"]);
     expect(typeof data.now).toBe("number");
     expect(data.notes[0].receivedAt).toBeUndefined();
+  });
+
+  it("pull応答のメモには旧クライアント互換のtags:[]が必ず付く", async () => {
+    await sync({ since: 0, notes: [note()], attachments: [] });
+    const data = await (await sync({ since: 0, notes: [], attachments: [] })).json() as any;
+    expect(data.notes[0].tags).toEqual([]);
+  });
+
+  it("旧クライアントがtags付きでpushしても受理される（フィールドは無視）", async () => {
+    const res = await sync({ since: 0, notes: [{ ...note(), tags: ["メモ"] }], attachments: [] });
+    expect(res.status).toBe(200);
+    const data = await (await sync({ since: 0, notes: [], attachments: [] })).json() as any;
+    expect(data.notes[0].body).toBe("hello");
   });
 
   it("古い更新は勝たない（LWW）", async () => {

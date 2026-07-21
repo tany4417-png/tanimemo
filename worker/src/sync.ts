@@ -13,43 +13,43 @@ export async function upsertNote(db: D1Database, n: NoteRecord): Promise<boolean
   // 既存行へのUPDATEではSET句に含めない）。2フィールド独立のため4通りを明示的に書く
   const hasFolderId = "folderId" in n;
   const hasOrderKey = "orderKey" in n;
-  const base = [n.id, n.body, JSON.stringify(n.tags), n.importance, n.createdAt, n.updatedAt, n.deleted, Date.now()] as const;
+  const base = [n.id, n.body, n.importance, n.createdAt, n.updatedAt, n.deleted, Date.now()] as const;
   if (hasFolderId && hasOrderKey) {
     await db.prepare(
-      `INSERT INTO notes (id, body, tags, importance, created_at, updated_at, deleted, received_at, folder_id, order_key)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+      `INSERT INTO notes (id, body, importance, created_at, updated_at, deleted, received_at, folder_id, order_key)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
        ON CONFLICT(id) DO UPDATE SET
-         body = excluded.body, tags = excluded.tags, importance = excluded.importance,
+         body = excluded.body, importance = excluded.importance,
          updated_at = excluded.updated_at, deleted = excluded.deleted, received_at = excluded.received_at,
          folder_id = excluded.folder_id, order_key = excluded.order_key
        WHERE excluded.updated_at > notes.updated_at`
     ).bind(...base, n.folderId ?? null, n.orderKey ?? null).run();
   } else if (hasFolderId) {
     await db.prepare(
-      `INSERT INTO notes (id, body, tags, importance, created_at, updated_at, deleted, received_at, folder_id)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+      `INSERT INTO notes (id, body, importance, created_at, updated_at, deleted, received_at, folder_id)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
        ON CONFLICT(id) DO UPDATE SET
-         body = excluded.body, tags = excluded.tags, importance = excluded.importance,
+         body = excluded.body, importance = excluded.importance,
          updated_at = excluded.updated_at, deleted = excluded.deleted, received_at = excluded.received_at,
          folder_id = excluded.folder_id
        WHERE excluded.updated_at > notes.updated_at`
     ).bind(...base, n.folderId ?? null).run();
   } else if (hasOrderKey) {
     await db.prepare(
-      `INSERT INTO notes (id, body, tags, importance, created_at, updated_at, deleted, received_at, order_key)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+      `INSERT INTO notes (id, body, importance, created_at, updated_at, deleted, received_at, order_key)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
        ON CONFLICT(id) DO UPDATE SET
-         body = excluded.body, tags = excluded.tags, importance = excluded.importance,
+         body = excluded.body, importance = excluded.importance,
          updated_at = excluded.updated_at, deleted = excluded.deleted, received_at = excluded.received_at,
          order_key = excluded.order_key
        WHERE excluded.updated_at > notes.updated_at`
     ).bind(...base, n.orderKey ?? null).run();
   } else {
     await db.prepare(
-      `INSERT INTO notes (id, body, tags, importance, created_at, updated_at, deleted, received_at)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+      `INSERT INTO notes (id, body, importance, created_at, updated_at, deleted, received_at)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
        ON CONFLICT(id) DO UPDATE SET
-         body = excluded.body, tags = excluded.tags, importance = excluded.importance,
+         body = excluded.body, importance = excluded.importance,
          updated_at = excluded.updated_at, deleted = excluded.deleted, received_at = excluded.received_at
        WHERE excluded.updated_at > notes.updated_at`
     ).bind(...base).run();
@@ -98,7 +98,7 @@ export async function upsertFolder(db: D1Database, f: FolderRecord): Promise<boo
 }
 
 type NoteRow = {
-  id: string; body: string; tags: string; importance: number; created_at: number; updated_at: number;
+  id: string; body: string; importance: number; created_at: number; updated_at: number;
   deleted: 0 | 1; folder_id: string | null; order_key: number | null;
 };
 type AttRow = { id: string; note_id: string; mime: string; size: number; created_at: number; updated_at: number; deleted: 0 | 1 };
@@ -166,20 +166,22 @@ export async function handleSync(req: Request, env: Env): Promise<Response> {
     `SELECT id, purged_at, kind FROM purged WHERE kind IN ('note', 'folder') AND purged_at > ?1`
   ).bind(body.since).all<{ id: string; purged_at: number; kind: string }>();
   const noteStubs: NoteRecord[] = purgedRows.results.filter((r) => r.kind === "note").map((r) => ({
-    id: r.id, body: "", tags: [], importance: 0, createdAt: 0, updatedAt: r.purged_at, deleted: 1, folderId: null, orderKey: null,
+    id: r.id, body: "", importance: 0, createdAt: 0, updatedAt: r.purged_at, deleted: 1, folderId: null, orderKey: null,
   }));
   const folderStubs: FolderRecord[] = purgedRows.results.filter((r) => r.kind === "folder").map((r) => ({
     id: r.id, name: "", parentId: null, createdAt: 0, updatedAt: r.purged_at, deleted: 1, orderKey: null,
   }));
+  const noteStubsAndRows: NoteRecord[] = [
+    ...noteRows.results.map((r) => ({
+      id: r.id, body: r.body, importance: r.importance,
+      createdAt: r.created_at, updatedAt: r.updated_at, deleted: r.deleted, folderId: r.folder_id, orderKey: r.order_key,
+    })),
+    ...noteStubs,
+  ];
   const res: SyncResponse = {
     now,
-    notes: [
-      ...noteRows.results.map((r) => ({
-        id: r.id, body: r.body, tags: JSON.parse(r.tags) as string[], importance: r.importance,
-        createdAt: r.created_at, updatedAt: r.updated_at, deleted: r.deleted, folderId: r.folder_id, orderKey: r.order_key,
-      })),
-      ...noteStubs,
-    ],
+    // tags: [] は旧クライアント互換シム（types.tsのNoteRecord.tagsコメント参照）。スタブ含む全notesに付ける
+    notes: noteStubsAndRows.map((n) => ({ ...n, tags: [] as string[] })),
     attachments: attRows.results.map((r) => ({
       id: r.id, noteId: r.note_id, mime: r.mime, size: r.size,
       createdAt: r.created_at, updatedAt: r.updated_at, deleted: r.deleted,
