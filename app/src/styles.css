@@ -36,7 +36,14 @@
 .acc-pink   { --acc: var(--c-pink);   --acc-tint: var(--t-pink); }
 
 /* ボタンの役割色（tint+deepパターン）。危険系（.danger）は対象外で--vermilionのまま */
-button.tint { background: var(--acc-tint, var(--card)); border-color: var(--acc, var(--rule)); color: var(--acc, var(--ink)); }
+/* ボタンは塗りつぶし＋白文字で統一（2026-07-21 オーナー要望。タグ・星・パンくずは対象外） */
+button.tint { background: var(--acc, #6B6455); border-color: var(--acc, #6B6455); color: #fff; }
+.syncbar button:not(.tint),
+.toolbar button:not(.primary):not(.tint):not(.star):not(.danger),
+.settings button:not(.primary):not(.tint) {
+  background: #6B6455; border-color: #6B6455; color: #fff;
+}
+button.danger { background: var(--vermilion); border-color: var(--vermilion); color: #fff; }
 
 * { box-sizing: border-box; }
 html, body {
@@ -99,7 +106,7 @@ button {
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
 }
 button.primary { background: var(--indigo); border-color: var(--indigo); color: #fff; }
-button.danger { color: var(--vermilion); }
+
 /* アイコンのみのボタン（戻るボタンなど）は正方形36×36に固定する */
 button.icon-btn { width: 36px; height: 36px; padding: 0; }
 :focus-visible { outline: 2px solid var(--indigo); outline-offset: 2px; }
