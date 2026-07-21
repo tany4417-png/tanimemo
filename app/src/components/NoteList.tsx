@@ -71,7 +71,20 @@ export function NoteList(p: Props) {
               <BackIcon />
             </button>
           )}
-          <input className="search" placeholder="検索" value={p.query} onChange={(e) => p.onQuery(e.target.value)} />
+          <div className="search-wrap">
+            <input className="search" placeholder="検索" value={p.query} onChange={(e) => p.onQuery(e.target.value)} />
+            {p.query !== "" && (
+              <button
+                className="search-clear"
+                aria-label="検索をクリア"
+                // mousedownのpreventDefaultで検索inputからフォーカスを奪わない（iPhone風: クリア後そのまま入力を続けられる）
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => p.onQuery("")}
+              >
+                ✕
+              </button>
+            )}
+          </div>
           <select value={p.sort} onChange={(e) => p.onSort(e.target.value as SortMode)}>
             <option value="created">新しい順</option>
             <option value="updated">更新順</option>
