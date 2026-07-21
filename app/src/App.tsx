@@ -64,6 +64,8 @@ export default function App() {
   const syncing = useRef(false);
   // 起動時初期化（空メモ掃除等）の完了Promise。syncNowはこれを待ってから走る（下の初期化effect参照）
   const initCleanupRef = useRef<Promise<void>>(Promise.resolve());
+  // NoteScreenの未保存draftを戻り遷移の前にflushするための窓口（NoteScreenがマウント中だけ非null）
+  const noteFlushRef = useRef<(() => Promise<void>) | null>(null);
   // main（.app）要素そのものへの参照。追従スワイプ中に現在マウント中の.screenをquerySelectorで
   // 見つけてtranslateXを直接書き込む（Reactのstateを介さないため、カード枚数が多い一覧でも重くならない）
   const mainRef = useRef<HTMLElement | null>(null);
@@ -322,18 +324,25 @@ export default function App() {
       setNavDirection("back");
       setSuppressSlideIn(silent);
       if (view.name === "note") {
-        // 新規作成から何も書かずに戻った空メモの後始末。ゴミ箱行き(trashed)になった場合だけ
-        // tombstoneを同期する。空メモを復活させる需要は無いためundo履歴（runAction）には積まない。
+        // 未保存draftのflush→空メモ後始末の順に直列化する（flush前にdiscardIfEmptyNewが走ると、
+        // 入力直後600ms以内のバックスワイプで「空と誤認→物理削除→flushがnot found」になるため）。
         // fire-and-forget: 一覧のliveQueryが削除完了時に再発火するため、遷移をawaitで遅らせない
-        if (view.isNew) {
-          void discardIfEmptyNew(view.id, { preferTrash: syncing.current })
-            .then((r) => {
-              if (r === "trashed") scheduleSync();
-            })
-            .catch(() => {
-              // IndexedDB障害等はここで握りつぶす（残った空メモは次回起動時の掃除で回収される）
-            });
-        }
+        const isNewNote = view.isNew === true;
+        const noteId = view.id;
+        void (async () => {
+          try {
+            await noteFlushRef.current?.();
+          } catch {
+            // IndexedDB障害等。保存できなかった分は次の編集機会まで諦める（従来の保存押し忘れと同等）
+          }
+          if (!isNewNote) return;
+          try {
+            const r = await discardIfEmptyNew(noteId, { preferTrash: syncing.current });
+            if (r === "trashed") scheduleSync();
+          } catch {
+            // IndexedDB障害等はここで握りつぶす（残った空メモは次回起動時の掃除で回収される）
+          }
+        })();
         setView({ name: "list" });
         return;
       }
@@ -746,6 +755,26 @@ export default function App() {
             );
           }}
           highlightQuery={query}
+          onAutoSave={async (body) => {
+            await updateNote(current.id, { body });
+            scheduleSync();
+          }}
+          onEditSessionEnd={(before, after) => {
+            // 自動保存は積まず、編集セッション1回分をundo1エントリにまとめる。
+            // DB書き込みは自動保存で済んでいるため、pushActionを直接使う（runActionのdoFnは実行しない）
+            setStacks((s) =>
+              pushAction(s, {
+                label: "本文を変更",
+                undo: async () => {
+                  await updateNote(current.id, { body: before });
+                },
+                redo: async () => {
+                  await updateNote(current.id, { body: after });
+                },
+              })
+            );
+          }}
+          flushRef={noteFlushRef}
         />
       )}
       {view.name === "settings" && (

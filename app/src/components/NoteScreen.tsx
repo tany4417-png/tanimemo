@@ -13,6 +13,8 @@ import { useAttachmentUrls } from "./useAttachmentUrls";
 
 // 編集中の変更確定までの猶予（ms）。この間隔だけ入力が途切れたら、その時点のdraftを1スナップショットとしてhistoryへ積む
 const HISTORY_COALESCE_MS = 600;
+// 自動保存のデバウンス（ms）。入力がこの間隔だけ途切れたら未保存のdraftをDBへ書く
+const AUTOSAVE_MS = 600;
 
 type Props = {
   syncBar: React.ReactNode;
@@ -31,9 +33,17 @@ type Props = {
   onDeleteAttachment: (attId: string) => void;
   // 検索から開いたときのハイライト・ジャンプ用クエリ。空なら何もしない
   highlightQuery?: string;
+  // 自動保存。App側でupdateNote＋scheduleSyncのみ行い、グローバルundoには積まない
+  onAutoSave: (body: string) => Promise<void>;
+  // 編集セッション（編集開始〜完了/戻る）終了時、開始時と本文が変わっていた場合のみ呼ぶ。
+  // App側でグローバルundoに1エントリ積む（細かい取り消しは編集中のローカルundo/redoが担当）
+  onEditSessionEnd: (before: string, after: string) => void;
+  // 「戻る」系遷移（バックスワイプ含む）の前にAppが未保存分をflushするための公開窓口。
+  // performBack側はこれをawaitしてからdiscardIfEmptyNewを呼ぶ（物理削除と自動保存のレース防止）
+  flushRef: React.RefObject<(() => Promise<void>) | null>;
 };
 
-export function NoteScreen({ syncBar, slideClass, note, startEditing, onChange, onDelete, onBack, onMoveNote, onAttached, onDeleteAttachment, highlightQuery }: Props) {
+export function NoteScreen({ syncBar, slideClass, note, startEditing, onChange, onDelete, onBack, onMoveNote, onAttached, onDeleteAttachment, highlightQuery, onAutoSave, onEditSessionEnd, flushRef }: Props) {
   const [editing, setEditing] = useState(startEditing ?? false);
   const [draft, setDraft] = useState(note.body);
   const [movePickerOpen, setMovePickerOpen] = useState(false);
@@ -52,6 +62,17 @@ export function NoteScreen({ syncBar, slideClass, note, startEditing, onChange, 
   const historyRef = useRef<Hist>(histInit(note.body));
   const [, setHistoryTick] = useState(0);
   const coalesceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 自動保存の状態。lastSaved=最後にDBへ書いた本文（note.bodyと比べない: 編集中に同期で
+  // note.bodyが変わっても自動保存の判定を乱さないため）。sessionStart=編集セッション開始時の本文。
+  const lastSavedRef = useRef(note.body);
+  const sessionStartRef = useRef(note.body);
+  // visibilitychange・flushRef・unmountクロージャから最新値を読むためのref
+  const draftRef = useRef(draft);
+  const editingRef = useRef(editing);
+  useEffect(() => {
+    draftRef.current = draft;
+    editingRef.current = editing;
+  });
 
   useEffect(() => {
     return () => {
@@ -73,6 +94,58 @@ export function NoteScreen({ syncBar, slideClass, note, startEditing, onChange, 
       first.scrollIntoView({ block: "center" });
     }
   }, [html, editing, highlightQuery]);
+
+  // 編集中、入力がAUTOSAVE_MSだけ途切れたら未保存のdraftをDBへ書く。
+  // undo/redoボタン経由のdraft変更もこのeffectが自然に拾う
+  useEffect(() => {
+    if (!editing) return;
+    if (draft === lastSavedRef.current) return;
+    const t = setTimeout(() => {
+      lastSavedRef.current = draft;
+      void onAutoSave(draft);
+    }, AUTOSAVE_MS);
+    return () => clearTimeout(t);
+  }, [draft, editing, onAutoSave]);
+
+  // 未保存分の即時保存。編集中でなければ・未保存分が無ければno-op
+  async function flushDraft() {
+    if (!editingRef.current) return;
+    if (draftRef.current === lastSavedRef.current) return;
+    lastSavedRef.current = draftRef.current;
+    await onAutoSave(draftRef.current);
+  }
+
+  // Appの戻り遷移（ボタン・バックスワイプ）がflushしてからdiscardIfEmptyNewできるよう窓口を公開する
+  useEffect(() => {
+    flushRef.current = flushDraft;
+    return () => {
+      flushRef.current = null;
+    };
+  });
+
+  // アプリ切替・タブ非表示のタイミングでも未保存分を保存する（PWAはバックグラウンドでプロセスが落ち得る）
+  useEffect(() => {
+    if (!editing) return;
+    const onVis = () => {
+      if (document.visibilityState === "hidden") void flushDraft();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+    // flushDraftはref経由で最新を読むため依存に入れない
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editing]);
+
+  // 編集したまま画面を離れた（戻る・削除等でunmount）場合のセッション終了。
+  // 保存自体はperformBack側のflushRef経由（またはデバウンス済み）で済んでいる前提で、undoエントリだけ積む
+  useEffect(() => {
+    return () => {
+      if (editingRef.current && draftRef.current !== sessionStartRef.current) {
+        onEditSessionEnd(sessionStartRef.current, draftRef.current);
+      }
+    };
+    // マウント時のonEditSessionEndを使う（note.idはこの画面の生存中不変）
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // 変更が続く間はタイマーを延長し、HISTORY_COALESCE_MSだけ途切れたらその時点のdraftを1スナップショットとして積む
   function scheduleSnapshot(next: string) {
@@ -123,19 +196,29 @@ export function NoteScreen({ syncBar, slideClass, note, startEditing, onChange, 
       coalesceTimer.current = null;
     }
     setDraft(note.body);
+    lastSavedRef.current = note.body;
+    sessionStartRef.current = note.body;
     historyRef.current = histInit(note.body);
     setHistoryTick(0);
     setEditing(true);
   }
 
-  function save() {
+  // 「完了」: 未保存分を保存し、セッションundoエントリを確定して閲覧モードへ戻る
+  function finishEditing() {
     if (coalesceTimer.current) {
       clearTimeout(coalesceTimer.current);
       coalesceTimer.current = null;
     }
-    onChange({ body: draft });
+    if (draft !== lastSavedRef.current) {
+      lastSavedRef.current = draft;
+      void onAutoSave(draft);
+    }
+    if (draft !== sessionStartRef.current) {
+      onEditSessionEnd(sessionStartRef.current, draft);
+      sessionStartRef.current = draft;
+    }
     setEditing(false);
-    // メモをまたいで持ち越さないよう、保存・編集終了でhistoryは破棄する
+    // メモをまたいで持ち越さないよう、編集終了でhistoryは破棄する
     historyRef.current = histInit(draft);
     setHistoryTick(0);
   }
@@ -181,7 +264,7 @@ export function NoteScreen({ syncBar, slideClass, note, startEditing, onChange, 
       <div className="list-header">
         {syncBar}
         <div className="toolbar">
-          {/* 1段目（オーナー指定配置）: 戻るだけ左、写真・移動…・編集/保存・削除は右揃え。
+          {/* 1段目（オーナー指定配置）: 戻るだけ左、写真・移動…・編集/完了・削除は右揃え。
               画面幅で位置が変わらないよう常にこの並び固定 */}
           <div className="note-toolbar-row">
             <button className="icon-btn" onClick={onBack} aria-label="戻る">
@@ -201,7 +284,7 @@ export function NoteScreen({ syncBar, slideClass, note, startEditing, onChange, 
             />
             <button className="tint acc-violet" onClick={() => setMovePickerOpen((v) => !v)}>移動…</button>
             {editing ? (
-              <button className="primary" onClick={save}>保存</button>
+              <button className="primary" onClick={finishEditing}>完了</button>
             ) : (
               <button className="tint acc-amber" onClick={startEdit}>編集</button>
             )}
