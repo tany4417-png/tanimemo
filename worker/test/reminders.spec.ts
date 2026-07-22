@@ -54,4 +54,13 @@ describe("reminder derivation on sync", () => {
     await sync({ since: 0, notes: [note({ updatedAt: 2, body: "edited" })], attachments: [] });
     expect((await fireAt("n1"))?.next_fire_at).toBe(at);
   });
+  it("LWW負け（stale）のpushはremindersに影響しない", async () => {
+    const base = Date.now();
+    const at1 = base + 3600_000;
+    const at2 = base + 7200_000;
+    await sync({ since: 0, notes: [note({ updatedAt: base + 1, remindAt: at1, repeatRule: null })], attachments: [] });
+    // 古いupdatedAtで別のremindAtを送る（LWW負け=stale経路）
+    await sync({ since: 0, notes: [note({ updatedAt: base, remindAt: at2, repeatRule: null })], attachments: [] });
+    expect((await fireAt("n1"))?.next_fire_at).toBe(at1); // 勝者の値のまま
+  });
 });
