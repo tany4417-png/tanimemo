@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { firstLineTitle, urlOnly } from "../lib/markdown";
+import { reminderLabel } from "../lib/reminder-label";
 import { makeSnippet } from "../lib/search";
 import { planReorder, type ReorderPlan } from "../lib/reorder";
 import type { SortMode } from "../lib/sort";
@@ -178,6 +179,10 @@ export function NoteList(p: Props) {
                 <CardThumbs noteId={n.id} />
                 <div className="card-sub">
                   {new Date(n.updatedAt).toLocaleString("ja-JP")}
+                  {/* 防御読み: 旧データでremindAtキーが欠けている可能性を考慮する */}
+                  {(n.remindAt ?? null) != null && (
+                    <span className="card-reminder"> ・{reminderLabel(n.remindAt, n.repeatRule, Date.now())}</span>
+                  )}
                 </div>
               </SwipeableCard>
             ))}

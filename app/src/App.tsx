@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as
 import { useLiveQuery } from "dexie-react-hooks";
 import { NoteList } from "./components/NoteList";
 import { NoteScreen } from "./components/NoteScreen";
+import { RemindersScreen } from "./components/RemindersScreen";
 import { Settings } from "./components/Settings";
 import { SyncStatus } from "./components/SyncStatus";
 import { TrashScreen } from "./components/TrashScreen";
@@ -31,7 +32,7 @@ import type { ReorderPlan } from "./lib/reorder";
 import { searchNotes, sortNotes, type SortMode } from "./lib/sort";
 import { runSync } from "./lib/sync";
 
-type View = { name: "list" } | { name: "note"; id: string; isNew?: boolean } | { name: "settings" } | { name: "trash" };
+type View = { name: "list" } | { name: "note"; id: string; isNew?: boolean } | { name: "settings" } | { name: "trash" } | { name: "reminders" };
 
 // メモ内容の変更（App onChangeハンドラ経由）の操作ラベル。undo/redoボタンの表示にのみ使う
 function labelForNotePatch(patch: NotePatch): string {
@@ -392,6 +393,10 @@ export default function App() {
         return;
       }
       if (view.name === "trash") {
+        setView({ name: "settings" });
+        return;
+      }
+      if (view.name === "reminders") {
         setView({ name: "settings" });
         return;
       }
@@ -853,6 +858,7 @@ export default function App() {
             URL.revokeObjectURL(a.href);
           }}
           onTrash={() => goForward({ name: "trash" })}
+          onReminders={() => goForward({ name: "reminders" })}
         />
       )}
       {view.name === "trash" && (
@@ -862,6 +868,12 @@ export default function App() {
           onBack={navigateBack}
           onRestoreNote={onRestoreNoteFromTrash}
           onRestoreFolder={onRestoreFolderFromTrash}
+        />
+      )}
+      {view.name === "reminders" && (
+        <RemindersScreen
+          onOpenNote={(id) => goForward({ name: "note", id })}
+          onBack={navigateBack}
         />
       )}
     </main>
