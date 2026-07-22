@@ -19,7 +19,9 @@ export async function syncReminderRow(db: D1Database, noteId: string, now: numbe
 
 export type SubRow = { id: string; endpoint: string; p256dh: string; auth: string };
 export type PushSender = (sub: SubRow, payload: string) => Promise<{ ok: boolean; status?: number }>;
-const TICK_LIMIT = 4; // サブリクエスト50/呼び出し(無料プラン・D1込み)対策。試算はGlobal Constraints参照。超過分は次tick
+// サブリクエスト50/呼び出し(無料プラン・D1込み)対策。試算はGlobal Constraints参照。超過分は次tick。
+// 購読2台（iPhone+PC）前提の試算。3台以上に増やす場合は上限を再計算すること
+const TICK_LIMIT = 4;
 
 async function dispatchToAll(db: D1Database, noteId: string, title: string, send: PushSender, subs: SubRow[]) {
   const payload = JSON.stringify({ noteId, title });
