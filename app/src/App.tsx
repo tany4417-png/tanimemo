@@ -313,24 +313,37 @@ export default function App() {
     return () => document.removeEventListener("visibilitychange", check);
   }, []);
 
+  // 対象メモがローカルに存在する・かつゴミ箱でない場合だけnoteビューを開き、それ以外はlistへ
+  // フォールバックする（削除済み通知の取りこぼしタップ・他端末で既に消えたメモ等への対策）
+  const openNoteOrFallback = useCallback(
+    (id: string) => {
+      void (async () => {
+        const n = await db.notes.get(id);
+        if (n && n.deleted === 0) goForward({ name: "note", id });
+        else goForward({ name: "list" });
+      })();
+    },
+    [goForward]
+  );
+
   // SW（notificationclick）からのpostMessageを受け取り、対象メモを開く。既存ウィンドウがある場合の経路
   useEffect(() => {
     const onMsg = (e: MessageEvent) => {
       const d = e.data as { type?: string; noteId?: string };
-      if (d?.type === "open-note" && d.noteId) goForward({ name: "note", id: d.noteId });
+      if (d?.type === "open-note" && d.noteId) openNoteOrFallback(d.noteId);
     };
     navigator.serviceWorker?.addEventListener("message", onMsg);
     return () => navigator.serviceWorker?.removeEventListener("message", onMsg);
-  }, [goForward]);
+  }, [openNoteOrFallback]);
 
   // 起動URLの ?note=<id>（SWのopenWindowで未起動時に開かれた場合の経路）を1回だけ処理する
   useEffect(() => {
     const id = new URLSearchParams(location.search).get("note");
     if (id) {
       history.replaceState(null, "", "/");
-      goForward({ name: "note", id });
+      openNoteOrFallback(id);
     }
-  }, []);
+  }, [openNoteOrFallback]);
 
   const onCreate = useCallback(async () => {
     const n = await createNote("", currentFolderId);
