@@ -106,7 +106,15 @@ export async function runSync(
     // 再適用するだけなので無害
     for (const n of data.notes) {
       const cur = await db.notes.get(n.id);
-      if (!cur || n.updatedAt >= cur.updatedAt) await db.notes.put({ ...n, folderId: n.folderId ?? null, orderKey: n.orderKey ?? null, dirty: 0 });
+      if (!cur || n.updatedAt >= cur.updatedAt)
+        await db.notes.put({
+          ...n,
+          folderId: n.folderId ?? null,
+          orderKey: n.orderKey ?? null,
+          remindAt: n.remindAt ?? null,
+          repeatRule: n.repeatRule ?? null,
+          dirty: 0,
+        });
     }
     for (const a of data.attachments) {
       const cur = await db.attachments.get(a.id);
