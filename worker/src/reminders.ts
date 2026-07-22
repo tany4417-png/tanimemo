@@ -56,7 +56,7 @@ export async function runReminderTick(db: D1Database, now: number, send: PushSen
       .bind(r.note_id, r.subscription_id).run();
     const sub = subs.find(s => s.id === r.subscription_id);
     if (!sub || r.body == null || r.deleted) continue; // メモか購読が消えていたら破棄
-    const res = await send(sub, JSON.stringify({ noteId: r.note_id, title: noteTitle(r.body) }));
+    const res = await send(sub, JSON.stringify({ noteId: r.note_id, title: noteTitle(r.body) })).catch(() => ({ ok: false as const, status: 0 }));
     if (!res.ok && (res.status === 404 || res.status === 410)) {
       await db.prepare("DELETE FROM push_subscriptions WHERE id=?").bind(sub.id).run();
     } // 再々失敗は諦める（push_retriesに積み直さない）

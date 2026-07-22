@@ -138,4 +138,20 @@ describe("runReminderTick", () => {
     retries = await env.DB.prepare("SELECT * FROM push_retries").all();
     expect(retries.results.length).toBe(0);
   });
+  it("retry経路でsenderがthrowしても行が削除される", async () => {
+    const now = Date.now();
+    await addSub("s1");
+    await addNote("n1", now - 1000, null);
+    // 前tickの失敗をシミュレート: push_retriesに行を挿入
+    await env.DB.prepare("INSERT INTO push_retries (note_id, subscription_id, created_at) VALUES (?,?,?)")
+      .bind("n1", "s1", now - 10000).run();
+
+    await expect(runReminderTick(env.DB, now, async () => {
+      throw new Error("boom");
+    })).resolves.toBeUndefined();
+
+    // 行は成否問わず削除される
+    const retries = await env.DB.prepare("SELECT * FROM push_retries").all();
+    expect(retries.results.length).toBe(0);
+  });
 });
