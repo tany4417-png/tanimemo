@@ -22,6 +22,16 @@ describe("highlightMatches", () => {
     expect(el.querySelectorAll("mark.search-hit").length).toBe(3);
   });
 
+  it("冪等: 同じrootに二度呼んでも入れ子markを作らない", () => {
+    const el = div("<p>今日はナスの苗を植えた</p>");
+    highlightMatches(el, "ナス");
+    const second = highlightMatches(el, "ナス");
+    expect(el.querySelectorAll("mark.search-hit").length).toBe(1);
+    expect(el.querySelector("mark.search-hit mark")).toBeNull();
+    // 2回目は新規マッチが無いのでnull（ジャンプ側はjumpedRefで1回制御しているため影響なし）
+    expect(second).toBeNull();
+  });
+
   it("複数要素それぞれのマッチを包み、最初の出現を返す", () => {
     const el = div("<p>一つ目のナス</p><ul><li>二つ目のナス</li></ul>");
     const first = highlightMatches(el, "ナス");

@@ -48,6 +48,10 @@ export function NoteScreen({ syncBar, slideClass, note, startEditing, onChange, 
   const [draft, setDraft] = useState(note.body);
   const [movePickerOpen, setMovePickerOpen] = useState(false);
   const html = useMemo(() => renderMarkdown(note.body), [note.body]);
+  // dangerouslySetInnerHTMLに渡す{__html}はオブジェクトごとメモ化する。React 19は参照が変わると
+  // 文字列が同値でもinnerHTMLを再設定するため、インライン生成だと無関係な再レンダー（allFolders到着等）で
+  // ハイライトeffectが付けた<mark>が毎回消えてしまう
+  const htmlObj = useMemo(() => ({ __html: html }), [html]);
   const allFolders = useLiveQuery(listAllFolders, [], []);
   const flatFolders = useMemo(() => flattenFolderTree(allFolders), [allFolders]);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -360,7 +364,7 @@ export function NoteScreen({ syncBar, slideClass, note, startEditing, onChange, 
               {/* 本文が空のメモでは本文カードを出さない（空の枠だけ残ると小さな入力欄に見えるため）。
                   閲覧時の並びは文書として読む順を優先し、従来どおり本文→画像のまま */}
               {note.body.trim() !== "" && (
-                <div ref={viewRef} className="note-view" onClick={clickView} dangerouslySetInnerHTML={{ __html: html }} />
+                <div ref={viewRef} className="note-view" onClick={clickView} dangerouslySetInnerHTML={htmlObj} />
               )}
               <Gallery noteId={note.id} onDeleteAttachment={onDeleteAttachment} />
             </>
