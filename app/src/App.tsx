@@ -9,6 +9,7 @@ import { popRedo, popUndo, pushAction, type ActionStacks } from "./lib/actions";
 import { addImageFromBlob, restoreAttachment, softDeleteAttachment } from "./lib/attachments";
 import { db } from "./lib/db";
 import { exportZip, localYmd } from "./lib/export";
+import { ensurePushSubscription, isPushEnabled } from "./lib/push";
 import {
   countOrphans,
   createFolder,
@@ -288,6 +289,41 @@ export default function App() {
     setNavDirection("forward");
     setSuppressSlideIn(false);
     setView(v);
+  }, []);
+
+  // 通知購読のヘルスチェック。起動時と、タブが可視状態に戻るたびに実行する。有効化済み（pushEnabled）
+  // な端末だけが対象で、ブラウザ側で購読が失効していればensurePushSubscriptionが再購読・再登録する。
+  // 失敗は黙認する（次回のチェックで再試行されるため、ここでエラー表示はしない）
+  useEffect(() => {
+    const check = async () => {
+      if (document.visibilityState !== "visible") return;
+      if (await isPushEnabled()) {
+        const t = localStorage.getItem("tanimemo.token") ?? "";
+        if (t) ensurePushSubscription(t).catch(() => {});
+      }
+    };
+    void check();
+    document.addEventListener("visibilitychange", check);
+    return () => document.removeEventListener("visibilitychange", check);
+  }, []);
+
+  // SW（notificationclick）からのpostMessageを受け取り、対象メモを開く。既存ウィンドウがある場合の経路
+  useEffect(() => {
+    const onMsg = (e: MessageEvent) => {
+      const d = e.data as { type?: string; noteId?: string };
+      if (d?.type === "open-note" && d.noteId) goForward({ name: "note", id: d.noteId });
+    };
+    navigator.serviceWorker?.addEventListener("message", onMsg);
+    return () => navigator.serviceWorker?.removeEventListener("message", onMsg);
+  }, [goForward]);
+
+  // 起動URLの ?note=<id>（SWのopenWindowで未起動時に開かれた場合の経路）を1回だけ処理する
+  useEffect(() => {
+    const id = new URLSearchParams(location.search).get("note");
+    if (id) {
+      history.replaceState(null, "", "/");
+      goForward({ name: "note", id });
+    }
   }, []);
 
   const onCreate = useCallback(async () => {

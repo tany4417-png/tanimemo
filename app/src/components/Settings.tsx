@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { collectDiagnostics, type Diagnostics } from "../lib/diagnostics";
+import { disablePush, ensurePushSubscription, isPushEnabled, sendTestPush } from "../lib/push";
 import { BackIcon, ExportIcon, TrashIcon } from "./icons";
 
 // 診断パネルの表示・コピー用にテキスト整形する（コンポーネント専用の純関数のため単体テストは設けていない。
@@ -14,6 +15,8 @@ function formatDiagnosticsText(d: Diagnostics): string {
     `メモ: 総数${d.notes.total} / ゴミ箱${d.notes.trashCount} / dirty${d.notes.dirty}`,
     `フォルダ: 総数${d.folders.total} / dirty${d.folders.dirty}`,
     `添付: メタ${d.attachments.metaCount} / dirty${d.attachments.dirty} / ローカル実体${d.attachments.blobCount}`,
+    `通知許可: ${d.notifyPermission}`,
+    `通知購読: ${d.pushEnabled ? "有効" : "無効"}`,
   ].join("\n");
 }
 
@@ -31,6 +34,12 @@ type Props = {
 export function Settings({ syncBar, slideClass, token, onSave, onBack, onExport, onTrash }: Props) {
   const [value, setValue] = useState(token);
   const diagnostics = useLiveQuery(collectDiagnostics, [], null);
+  const [pushOn, setPushOn] = useState(false);
+  const [pushMsg, setPushMsg] = useState("");
+
+  useEffect(() => {
+    isPushEnabled().then(setPushOn);
+  }, []);
 
   // PCと端末とで表示中のビルドがずれる問題の再発防止。SWがあれば更新チェックしてから、
   // どちらにせよ1秒後にリロードする（SW未対応環境ではリロードのみ行う）
@@ -68,6 +77,36 @@ export function Settings({ syncBar, slideClass, token, onSave, onBack, onExport,
             <TrashIcon size={18} />
             ゴミ箱
           </button>
+          <label>
+            <input
+              type="checkbox"
+              checked={pushOn}
+              onChange={async (e) => {
+                if (e.target.checked) {
+                  const r = await ensurePushSubscription(token);
+                  setPushOn(r === "subscribed");
+                  setPushMsg(
+                    r === "denied"
+                      ? "通知が許可されていません。端末の設定から許可してください"
+                      : r === "unsupported"
+                        ? "この環境は通知に対応していません（iPhoneはホーム画面に追加したアプリから開いてください）"
+                        : ""
+                  );
+                } else {
+                  await disablePush(token);
+                  setPushOn(false);
+                  setPushMsg("");
+                }
+              }}
+            />
+            この端末で通知を受け取る
+          </label>
+          {pushMsg && <p>{pushMsg}</p>}
+          {pushOn && (
+            <button onClick={async () => setPushMsg((await sendTestPush(token)) ? "テスト通知を送りました" : "送信に失敗しました")}>
+              テスト通知
+            </button>
+          )}
           <hr />
           <p>バージョン: {__APP_VERSION__}</p>
           <button className="tint acc-blue" onClick={() => void updateApp()}>
@@ -87,6 +126,8 @@ export function Settings({ syncBar, slideClass, token, onSave, onBack, onExport,
                   添付: メタ{diagnostics.attachments.metaCount} / dirty{diagnostics.attachments.dirty} / ローカル実体
                   {diagnostics.attachments.blobCount}
                 </p>
+                <p>通知許可: {diagnostics.notifyPermission}</p>
+                <p>通知購読: {diagnostics.pushEnabled ? "有効" : "無効"}</p>
                 <button
                   className="tint acc-teal"
                   onClick={() => void navigator.clipboard.writeText(formatDiagnosticsText(diagnostics))}

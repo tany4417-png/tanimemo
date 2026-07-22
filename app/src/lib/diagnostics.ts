@@ -1,4 +1,5 @@
 import { db } from "./db";
+import { isPushEnabled } from "./push";
 
 export type Diagnostics = {
   version: string;
@@ -7,19 +8,22 @@ export type Diagnostics = {
   notes: { total: number; trashCount: number; dirty: number };
   folders: { total: number; dirty: number };
   attachments: { metaCount: number; dirty: number; blobCount: number };
+  notifyPermission: NotificationPermission | "unsupported";
+  pushEnabled: boolean;
 };
 
 // 設定画面の「同期の診断」パネル用データ集計。ローカルDB（Dexie）の件数を読むだけで、サーバーへは問い合わせない。
 // notes.totalはゴミ箱を除いた有効メモ数（deleted=0）で、ゴミ箱数は別項目にする。
 // folders/attachmentsはブリーフでゴミ箱数の内訳が要求されていないため、deletedを問わず全行数を「総数」とする
 export async function collectDiagnostics(): Promise<Diagnostics> {
-  const [allNotes, allFolders, allAttachments, blobCount, lastSyncRow, fullResyncRow] = await Promise.all([
+  const [allNotes, allFolders, allAttachments, blobCount, lastSyncRow, fullResyncRow, pushEnabled] = await Promise.all([
     db.notes.toArray(),
     db.folders.toArray(),
     db.attachments.toArray(),
     db.attachmentBlobs.count(),
     db.meta.get("lastSync"),
     db.meta.get("fullResyncV4"),
+    isPushEnabled(),
   ]);
 
   return {
@@ -40,5 +44,7 @@ export async function collectDiagnostics(): Promise<Diagnostics> {
       dirty: allAttachments.filter((a) => a.dirty === 1).length,
       blobCount,
     },
+    notifyPermission: typeof Notification !== "undefined" ? Notification.permission : "unsupported",
+    pushEnabled,
   };
 }
