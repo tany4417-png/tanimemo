@@ -13,8 +13,23 @@ export type RepeatRule =
 export function parseRepeatRule(json: string | null): RepeatRule | null {
   if (!json) return null;
   try {
-    const v = JSON.parse(json);
-    return v && typeof v.type === "string" ? (v as RepeatRule) : null;
+    const v = JSON.parse(json) as RepeatRule;
+    if (!v || typeof v !== "object") return null;
+    switch (v.type) {
+      case "daily": return { type: "daily" };
+      case "weekly":
+        return Array.isArray(v.weekdays) && v.weekdays.length > 0 && v.weekdays.every((w) => Number.isInteger(w) && w >= 0 && w <= 6)
+          ? { type: "weekly", weekdays: v.weekdays } : null;
+      case "monthly":
+        return Number.isInteger(v.day) && v.day >= 1 && v.day <= 31 ? { type: "monthly", day: v.day } : null;
+      case "interval":
+        return (v.unit === "day" || v.unit === "week") && Number.isInteger(v.n) && v.n >= 1
+          ? { type: "interval", unit: v.unit, n: v.n } : null;
+      case "nth_weekday":
+        return (v.nth === -1 || (Number.isInteger(v.nth) && v.nth >= 1 && v.nth <= 5)) && Number.isInteger(v.weekday) && v.weekday >= 0 && v.weekday <= 6
+          ? { type: "nth_weekday", nth: v.nth, weekday: v.weekday } : null;
+      default: return null;
+    }
   } catch {
     return null;
   }
