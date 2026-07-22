@@ -293,10 +293,14 @@ export default function App() {
 
   // 通知購読のヘルスチェック。起動時と、タブが可視状態に戻るたびに実行する。有効化済み（pushEnabled）
   // な端末だけが対象で、ブラウザ側で購読が失効していればensurePushSubscriptionが再購読・再登録する。
+  // ただしヘルスチェックはユーザー操作起点ではないため、permissionがgranted済みの場合のみ実行する。
+  // grantedでなければ（defaultやdenied）ensurePushSubscription内のrequestPermission()呼び出しに
+  // 到達させず黙ってスキップする（iOSでは通知許可要求をユーザー操作起点にする必要があるため）
   // 失敗は黙認する（次回のチェックで再試行されるため、ここでエラー表示はしない）
   useEffect(() => {
     const check = async () => {
       if (document.visibilityState !== "visible") return;
+      if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
       if (await isPushEnabled()) {
         const t = localStorage.getItem("tanimemo.token") ?? "";
         if (t) ensurePushSubscription(t).catch(() => {});

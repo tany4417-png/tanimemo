@@ -17,7 +17,7 @@ export async function isPushEnabled(): Promise<boolean> {
   return (await db.meta.get("pushEnabled"))?.value === "1";
 }
 
-// 冪等: 有効化済みで購読が生きていれば何もしない。消えていれば再購読して再登録（ヘルスチェック兼用）
+// 冪等: 購読が無ければ再購読する。サーバー登録POSTは冪等upsertなので毎回行う（ヘルスチェック兼再登録）
 export async function ensurePushSubscription(token: string): Promise<"subscribed" | "denied" | "unsupported"> {
   if (!("serviceWorker" in navigator) || !("PushManager" in window)) return "unsupported";
   if (Notification.permission === "denied") return "denied";
@@ -40,11 +40,17 @@ export async function ensurePushSubscription(token: string): Promise<"subscribed
   return "subscribed";
 }
 
+// サーバーDELETEが失敗しても続行する。ローカルでunsubscribeしておけば、サーバーに購読が残っても
+// 次回送信時に404/410となりサーバー側で自動削除されるため、ローカルの無効化を優先する
 export async function disablePush(token: string): Promise<void> {
   const reg = await navigator.serviceWorker.ready;
   const sub = await reg.pushManager.getSubscription();
   if (sub) {
-    await fetch("/api/push/subscribe", { method: "DELETE", headers: headers(token), body: JSON.stringify({ endpoint: sub.endpoint }) });
+    try {
+      await fetch("/api/push/subscribe", { method: "DELETE", headers: headers(token), body: JSON.stringify({ endpoint: sub.endpoint }) });
+    } catch {
+      // サーバーへの通知に失敗してもローカルの無効化は継続する（上記コメント参照）
+    }
     await sub.unsubscribe();
   }
   await db.meta.put({ key: "pushEnabled", value: "0" });
