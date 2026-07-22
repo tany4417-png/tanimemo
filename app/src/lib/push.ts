@@ -61,5 +61,7 @@ export async function sendTestPush(token: string): Promise<boolean> {
   const sub = await reg.pushManager.getSubscription();
   if (!sub) return false;
   const res = await fetch("/api/push/test", { method: "POST", headers: headers(token), body: JSON.stringify({ endpoint: sub.endpoint }) });
+  // res.okを確認せずjson()すると、404等のテキスト応答でパースが例外を投げてボタンが無反応に見える
+  if (!res.ok) return false;
   return ((await res.json()) as { ok: boolean }).ok;
 }
