@@ -29,7 +29,7 @@ export function ReminderSheet({ note, onSave, onClose }: {
   const buildRule = (): string | null => {
     if (kind === "none") return null;
     if (kind === "daily") return JSON.stringify({ type: "daily" });
-    if (kind === "weekly") return JSON.stringify({ type: "weekly", weekdays: [...weekdays].sort() });
+    if (kind === "weekly") return JSON.stringify({ type: "weekly", weekdays: [...weekdays].sort((a, b) => a - b) });
     if (kind === "monthly") return JSON.stringify({ type: "monthly", day: monthDay });
     if (kind === "interval") return JSON.stringify({ type: "interval", unit: intervalUnit, n: intervalN });
     return JSON.stringify({ type: "nth_weekday", nth, weekday: nthWd });
@@ -80,7 +80,12 @@ export function ReminderSheet({ note, onSave, onClose }: {
       <div className="picker-actions">
         {note.remindAt != null && <button onClick={() => onSave(null, null)}>通知を解除</button>}
         <button onClick={onClose}>キャンセル</button>
-        <button disabled={!when || (kind === "weekly" && weekdays.length === 0)}
+        <button disabled={
+          !when ||
+          (kind === "weekly" && weekdays.length === 0) ||
+          (kind === "monthly" && (!Number.isInteger(monthDay) || monthDay < 1 || monthDay > 31)) ||
+          (kind === "interval" && (!Number.isInteger(intervalN) || intervalN < 1))
+        }
           onClick={() => onSave(new Date(when).getTime(), buildRule())}>保存</button>
       </div>
     </div>

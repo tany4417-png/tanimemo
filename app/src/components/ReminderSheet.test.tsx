@@ -29,4 +29,22 @@ describe("ReminderSheet", () => {
     fireEvent.click(screen.getByText("通知を解除"));
     expect(onSave).toHaveBeenCalledWith(null, null);
   });
+  it("毎週で月と水をチェック（水→月の順）すると昇順のweekdays配列が保存される", () => {
+    const onSave = vi.fn();
+    render(<ReminderSheet note={note} onSave={onSave} onClose={() => {}} />);
+    fireEvent.change(screen.getByLabelText("通知日時"), { target: { value: "2026-08-01T09:00" } });
+    fireEvent.change(screen.getByLabelText("繰り返し"), { target: { value: "weekly" } });
+    fireEvent.click(screen.getByLabelText("水"));
+    fireEvent.click(screen.getByLabelText("月"));
+    fireEvent.click(screen.getByText("保存"));
+    expect(onSave).toHaveBeenCalledWith(new Date("2026-08-01T09:00").getTime(), '{"type":"weekly","weekdays":[1,3]}');
+  });
+  it("毎月で日付欄に0を入れると保存ボタンが無効化される", () => {
+    render(<ReminderSheet note={note} onSave={() => {}} onClose={() => {}} />);
+    fireEvent.change(screen.getByLabelText("通知日時"), { target: { value: "2026-08-01T09:00" } });
+    fireEvent.change(screen.getByLabelText("繰り返し"), { target: { value: "monthly" } });
+    fireEvent.change(screen.getByDisplayValue("1"), { target: { value: "0" } });
+    const saveButton = screen.getByText("保存").closest("button") as HTMLButtonElement;
+    expect(saveButton.disabled).toBe(true);
+  });
 });
