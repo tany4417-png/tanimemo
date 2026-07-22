@@ -88,15 +88,20 @@ export function Settings({ syncBar, slideClass, token, onSave, onBack, onExport,
               checked={pushOn}
               onChange={async (e) => {
                 if (e.target.checked) {
-                  const r = await ensurePushSubscription(token);
-                  setPushOn(r === "subscribed");
-                  setPushMsg(
-                    r === "denied"
-                      ? "通知が許可されていません。端末の設定から許可してください"
-                      : r === "unsupported"
-                        ? "この環境は通知に対応していません（iPhoneはホーム画面に追加したアプリから開いてください）"
-                        : ""
-                  );
+                  try {
+                    const r = await ensurePushSubscription(token);
+                    setPushOn(r === "subscribed");
+                    setPushMsg(
+                      r === "denied"
+                        ? "通知が許可されていません。端末の設定から許可してください"
+                        : r === "unsupported"
+                          ? "この環境は通知に対応していません（iPhoneはホーム画面に追加したアプリから開いてください）"
+                          : ""
+                    );
+                  } catch {
+                    setPushOn(false);
+                    setPushMsg("通知の設定に失敗しました。通信環境を確認してください");
+                  }
                 } else {
                   await disablePush(token);
                   setPushOn(false);
