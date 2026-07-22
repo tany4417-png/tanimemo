@@ -110,6 +110,21 @@ describe("runReminderTick", () => {
     const sub = await env.DB.prepare("SELECT id FROM push_subscriptions WHERE id='s1'").first();
     expect(sub).toBeNull();
   });
+  it("senderが例外を投げても他の購読への送信とtickの完走が保たれる", async () => {
+    const now = Date.now();
+    await addSub("s1"); await addSub("s2");
+    await addNote("n1", now - 1000, null); await addFire("n1", now - 1000);
+    const sent: string[] = [];
+    await expect(runReminderTick(env.DB, now, async (sub) => {
+      if (sub.id === "s1") throw new Error("boom");
+      sent.push(sub.id);
+      return { ok: true };
+    })).resolves.toBeUndefined();
+    expect(sent).toEqual(["s2"]);
+    expect(await fireAt("n1")).toBeNull(); // 発火は消化される
+    const retries = await env.DB.prepare("SELECT * FROM push_retries WHERE subscription_id='s1'").all();
+    expect(retries.results.length).toBe(1);
+  });
   it("429はpush_retriesに積まれ、次tickで1回だけ再送後に消える", async () => {
     const now = Date.now();
     await addSub("s1");

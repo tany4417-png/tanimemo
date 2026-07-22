@@ -24,7 +24,9 @@ const TICK_LIMIT = 4; // サブリクエスト50/呼び出し(無料プラン・
 async function dispatchToAll(db: D1Database, noteId: string, title: string, send: PushSender, subs: SubRow[]) {
   const payload = JSON.stringify({ noteId, title });
   for (const sub of subs) {
-    const r = await send(sub, payload);
+    // PushSender契約（例外を投げずok:falseを返す）違反のモック・将来変更への保険。
+    // 例外時もstatus 0の失敗と同じ扱いにし、1件の異常が他の購読への送信とtickの完走を壊さないようにする
+    const r = await send(sub, payload).catch(() => ({ ok: false as const, status: 0 }));
     if (r.ok) continue;
     if (r.status === 404 || r.status === 410) {
       await db.prepare("DELETE FROM push_subscriptions WHERE id=?").bind(sub.id).run();
