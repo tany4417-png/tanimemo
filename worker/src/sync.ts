@@ -1,5 +1,6 @@
 import type { Env } from "./index";
 import type { AttachmentRecord, FolderRecord, NoteRecord, SyncRequest, SyncResponse } from "./types";
+import { syncReminderRow } from "./reminders";
 
 async function isPurged(db: D1Database, id: string): Promise<boolean> {
   const row = await db.prepare(`SELECT 1 FROM purged WHERE id = ?1`).bind(id).first();
@@ -125,7 +126,9 @@ export async function handleSync(req: Request, env: Env): Promise<Response> {
   await purgeExpiredTrash(env, now);
   const purgedIds: string[] = [];
   for (const n of body.notes ?? []) {
-    if ((await upsertNote(env.DB, n)) === "purged") purgedIds.push(n.id);
+    const result = await upsertNote(env.DB, n);
+    if (result === "purged") purgedIds.push(n.id);
+    else if (result === "applied") await syncReminderRow(env.DB, n.id, now);
   }
   for (const a of body.attachments ?? []) {
     if (!(await upsertAttachment(env.DB, a))) purgedIds.push(a.id);
