@@ -111,3 +111,13 @@ export function RedoIcon({ size = 24, className }: IconProps) {
     </svg>
   );
 }
+
+// リマインダー（ベル）
+export function BellIcon({ size = 24, className }: IconProps) {
+  return (
+    <svg width={size} height={size} className={className} {...common}>
+      <path d="M6 10a6 6 0 0 1 12 0c0 4.5 1.5 6 2 7H4c.5-1 2-2.5 2-7Z" />
+      <path d="M10 20a2 2 0 0 0 4 0" />
+    </svg>
+  );
+}

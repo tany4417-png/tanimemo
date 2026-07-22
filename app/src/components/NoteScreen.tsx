@@ -7,8 +7,9 @@ import { canRedo, canUndo, histInit, histPush, histRedo, histUndo, type Hist } f
 import { highlightMatches } from "../lib/highlight";
 import { renderMarkdown, toggleCheckbox } from "../lib/markdown";
 import type { Note } from "../lib/types";
-import { BackIcon, ImageIcon, RedoIcon, UndoIcon } from "./icons";
+import { BackIcon, BellIcon, ImageIcon, RedoIcon, UndoIcon } from "./icons";
 import { ImageOverlay, onImageDragStart } from "./ImageOverlay";
+import { ReminderSheet } from "./ReminderSheet";
 import { useAttachmentUrls } from "./useAttachmentUrls";
 
 // 編集中の変更確定までの猶予（ms）。この間隔だけ入力が途切れたら、その時点のdraftを1スナップショットとしてhistoryへ積む
@@ -22,7 +23,7 @@ type Props = {
   slideClass: string;
   note: Note;
   startEditing?: boolean;
-  onChange: (patch: { body?: string; importance?: 0 | 1 | 2 | 3 }) => void;
+  onChange: (patch: { body?: string; importance?: 0 | 1 | 2 | 3; remindAt?: number | null; repeatRule?: string | null }) => void;
   onDelete: () => void;
   onBack: () => void;
   // メモの移動（移動ピッカーで選んだ先）。App側でundo登録・同期スケジュールまで面倒を見る
@@ -47,6 +48,7 @@ export function NoteScreen({ syncBar, slideClass, note, startEditing, onChange, 
   const [editing, setEditing] = useState(startEditing ?? false);
   const [draft, setDraft] = useState(note.body);
   const [movePickerOpen, setMovePickerOpen] = useState(false);
+  const [reminderOpen, setReminderOpen] = useState(false);
   const html = useMemo(() => renderMarkdown(note.body), [note.body]);
   // dangerouslySetInnerHTMLに渡す{__html}はオブジェクトごとメモ化する。React 19は参照が変わると
   // 文字列が同値でもinnerHTMLを再設定するため、インライン生成だと無関係な再レンダー（allFolders到着等）で
@@ -278,6 +280,13 @@ export function NoteScreen({ syncBar, slideClass, note, startEditing, onChange, 
             <button className="icon-btn" aria-label="写真を添付" onClick={() => fileInputRef.current?.click()}>
               <ImageIcon />
             </button>
+            <button
+              className={(note.remindAt ?? null) != null ? "icon-btn accent" : "icon-btn"}
+              aria-label="リマインダー"
+              onClick={() => setReminderOpen(true)}
+            >
+              <BellIcon />
+            </button>
             <input
               ref={fileInputRef}
               type="file"
@@ -341,7 +350,17 @@ export function NoteScreen({ syncBar, slideClass, note, startEditing, onChange, 
           ))}
         </div>
       )}
-      {/* ヘッダー（・移動ピッカー）以外＝本文・ギャラリーだけがスクロール＆バウンドする */}
+      {reminderOpen && (
+        <ReminderSheet
+          note={note}
+          onClose={() => setReminderOpen(false)}
+          onSave={(remindAt, repeatRule) => {
+            onChange({ remindAt, repeatRule });
+            setReminderOpen(false);
+          }}
+        />
+      )}
+      {/* ヘッダー（・移動ピッカー・リマインダーシート）以外＝本文・ギャラリーだけがスクロール＆バウンドする */}
       <div className="screen-body">
         {/* 内容が短くてもラバーバンドさせるため、中身全体を.bounce-areaで1枚ラップする（常にコンテナ＋1pxの高さ） */}
         <div className="bounce-area">

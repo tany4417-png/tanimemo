@@ -37,6 +37,7 @@ type View = { name: "list" } | { name: "note"; id: string; isNew?: boolean } | {
 function labelForNotePatch(patch: NotePatch): string {
   if ("importance" in patch) return "重要度を変更";
   if ("body" in patch) return "本文を変更";
+  if ("remindAt" in patch) return patch.remindAt == null ? "通知を解除" : "リマインダーを設定";
   return "メモを編集";
 }
 
@@ -771,6 +772,8 @@ export default function App() {
             const before: NotePatch = {};
             if ("body" in patch) before.body = current.body;
             if ("importance" in patch) before.importance = current.importance;
+            if ("remindAt" in patch) before.remindAt = current.remindAt;
+            if ("repeatRule" in patch) before.repeatRule = current.repeatRule;
             void runAction(
               labelForNotePatch(patch),
               async () => {

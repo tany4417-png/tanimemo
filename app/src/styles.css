@@ -212,6 +212,14 @@ mark.search-hit { background: #ffe08a; color: inherit; border-radius: 2px; paddi
 .folder-picker-item:hover { background: var(--paper); }
 .folder-picker-item.disabled { color: var(--ink-soft); cursor: default; background: var(--paper); pointer-events: none; }
 
+/* リマインダー設定シート（.folder-picker流用のオーバーレイ）。中身は縦積みのフォーム */
+.reminder-sheet { display: flex; flex-direction: column; gap: 10px; padding: 12px; }
+.reminder-sheet label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--ink-soft); }
+.reminder-sheet label input, .reminder-sheet label select { color: var(--ink); }
+.picker-actions { display: flex; gap: 8px; justify-content: flex-end; }
+/* リマインダー設定済みを示す色付きベル（.icon-btn accent）。危険・削除色（vermilion）とは区別する */
+button.icon-btn.accent { border-color: var(--indigo); color: var(--indigo); }
+
 /* ==================== メモ画面 ==================== */
 /* ヘッダー以外（タグ入力・本文・ギャラリー）が.screen-body側。editorのflex:1が効くよう縦flexにしておく
    （bounce-area側に持たせる。screen-body自体はスクローラのままにしておく） */
