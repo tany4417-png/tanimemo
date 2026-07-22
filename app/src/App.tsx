@@ -559,6 +559,18 @@ export default function App() {
     [notes, runAction]
   );
 
+  // 自動保存（NoteScreen）。インラインだと毎レンダーで参照が変わり、NoteScreen側のデバウンスeffect
+  // （依存にonAutoSaveを含む）が編集中の無関係な再レンダーのたびにタイマーをリセットしてしまうため、
+  // メモ表示中はviewが同一参照で安定することを利用してuseCallbackで固定する
+  const onAutoSaveNote = useCallback(
+    async (body: string) => {
+      if (view.name !== "note") return;
+      await updateNote(view.id, { body });
+      scheduleSync();
+    },
+    [view, scheduleSync]
+  );
+
   // フォルダ移動（D&D）。moveFolderがfalse（自分自身への移動・子孫への移動など無効な操作）を返した場合は
   // 何も起きていないので履歴に積まない・同期もしない（falseになるケースは握りつぶしてよい仕様）
   const onMoveFolder = useCallback(
@@ -754,11 +766,9 @@ export default function App() {
               }
             );
           }}
-          highlightQuery={query}
-          onAutoSave={async (body) => {
-            await updateNote(current.id, { body });
-            scheduleSync();
-          }}
+          // 検索から開いたメモだけハイライトする。検索中に「新規」で作ったメモに古い検索語のマークが付かないようisNewでは渡さない
+          highlightQuery={view.isNew ? "" : query}
+          onAutoSave={onAutoSaveNote}
           onEditSessionEnd={(before, after) => {
             // 自動保存は積まず、編集セッション1回分をundo1エントリにまとめる。
             // DB書き込みは自動保存で済んでいるため、pushActionを直接使う（runActionのdoFnは実行しない）

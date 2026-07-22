@@ -13,11 +13,15 @@ export async function createNote(body = "", folderId: string | null = null): Pro
 }
 
 export async function updateNote(id: string, patch: NotePatch): Promise<Note> {
-  const cur = await db.notes.get(id);
-  if (!cur) throw new Error(`note not found: ${id}`);
-  const next: Note = { ...cur, ...patch, updatedAt: Date.now(), dirty: 1 };
-  await db.notes.put(next);
-  return next;
+  // get→putを1トランザクションに包む。自動保存と★変更・移動が数msで交錯したとき、
+  // 別トランザクションだと後着のputが先着の変更を巻き戻す（read-modify-writeのロストアップデート）
+  return db.transaction("rw", db.notes, async () => {
+    const cur = await db.notes.get(id);
+    if (!cur) throw new Error(`note not found: ${id}`);
+    const next: Note = { ...cur, ...patch, updatedAt: Date.now(), dirty: 1 };
+    await db.notes.put(next);
+    return next;
+  });
 }
 
 export async function softDeleteNote(id: string): Promise<Note> {
