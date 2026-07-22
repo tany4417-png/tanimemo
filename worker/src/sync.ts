@@ -6,55 +6,28 @@ async function isPurged(db: D1Database, id: string): Promise<boolean> {
   return row != null;
 }
 
-export async function upsertNote(db: D1Database, n: NoteRecord): Promise<boolean> {
-  if (await isPurged(db, n.id)) return false;
-  // 旧クライアント対策: pushされたオブジェクトにfolderId/orderKeyフィールド自体が無い場合は、
-  // 「明示的にnullへ変更した」と区別してfolder_id/order_keyを現状維持する（INSERT時のみNULL、
-  // 既存行へのUPDATEではSET句に含めない）。2フィールド独立のため4通りを明示的に書く
-  const hasFolderId = "folderId" in n;
-  const hasOrderKey = "orderKey" in n;
-  const base = [n.id, n.body, n.importance, n.createdAt, n.updatedAt, n.deleted, Date.now()] as const;
-  if (hasFolderId && hasOrderKey) {
-    await db.prepare(
-      `INSERT INTO notes (id, body, importance, created_at, updated_at, deleted, received_at, folder_id, order_key)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
-       ON CONFLICT(id) DO UPDATE SET
-         body = excluded.body, importance = excluded.importance,
-         updated_at = excluded.updated_at, deleted = excluded.deleted, received_at = excluded.received_at,
-         folder_id = excluded.folder_id, order_key = excluded.order_key
-       WHERE excluded.updated_at > notes.updated_at`
-    ).bind(...base, n.folderId ?? null, n.orderKey ?? null).run();
-  } else if (hasFolderId) {
-    await db.prepare(
-      `INSERT INTO notes (id, body, importance, created_at, updated_at, deleted, received_at, folder_id)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
-       ON CONFLICT(id) DO UPDATE SET
-         body = excluded.body, importance = excluded.importance,
-         updated_at = excluded.updated_at, deleted = excluded.deleted, received_at = excluded.received_at,
-         folder_id = excluded.folder_id
-       WHERE excluded.updated_at > notes.updated_at`
-    ).bind(...base, n.folderId ?? null).run();
-  } else if (hasOrderKey) {
-    await db.prepare(
-      `INSERT INTO notes (id, body, importance, created_at, updated_at, deleted, received_at, order_key)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
-       ON CONFLICT(id) DO UPDATE SET
-         body = excluded.body, importance = excluded.importance,
-         updated_at = excluded.updated_at, deleted = excluded.deleted, received_at = excluded.received_at,
-         order_key = excluded.order_key
-       WHERE excluded.updated_at > notes.updated_at`
-    ).bind(...base, n.orderKey ?? null).run();
-  } else {
-    await db.prepare(
-      `INSERT INTO notes (id, body, importance, created_at, updated_at, deleted, received_at)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
-       ON CONFLICT(id) DO UPDATE SET
-         body = excluded.body, importance = excluded.importance,
-         updated_at = excluded.updated_at, deleted = excluded.deleted, received_at = excluded.received_at
-       WHERE excluded.updated_at > notes.updated_at`
-    ).bind(...base).run();
+export type UpsertResult = "purged" | "applied" | "stale";
+
+export async function upsertNote(db: D1Database, n: NoteRecord): Promise<UpsertResult> {
+  if (await isPurged(db, n.id)) return "purged";
+  const receivedAt = Date.now();
+  const cols = ["id", "body", "importance", "created_at", "updated_at", "deleted", "received_at"];
+  const vals: unknown[] = [n.id, n.body, n.importance, n.createdAt, n.updatedAt, n.deleted, receivedAt];
+  const sets = ["body=excluded.body", "importance=excluded.importance", "updated_at=excluded.updated_at",
+    "deleted=excluded.deleted", "received_at=excluded.received_at"];
+  // 旧クライアント互換: フィールド自体が無ければ列に触れない（=現状維持）。明示的nullは書き込む
+  if ("folderId" in n) { cols.push("folder_id"); vals.push(n.folderId ?? null); sets.push("folder_id=excluded.folder_id"); }
+  if ("orderKey" in n) { cols.push("order_key"); vals.push(n.orderKey ?? null); sets.push("order_key=excluded.order_key"); }
+  if ("remindAt" in n) {
+    cols.push("remind_at", "repeat_rule");
+    vals.push(n.remindAt ?? null, n.repeatRule ?? null);
+    sets.push("remind_at=excluded.remind_at", "repeat_rule=excluded.repeat_rule");
   }
-  return true;
+  const sql = `INSERT INTO notes (${cols.join(",")}) VALUES (${cols.map(() => "?").join(",")})
+    ON CONFLICT(id) DO UPDATE SET ${sets.join(",")}
+    WHERE excluded.updated_at > notes.updated_at`;
+  const res = await db.prepare(sql).bind(...vals).run();
+  return (res.meta.changes ?? 0) > 0 ? "applied" : "stale";
 }
 
 export async function upsertAttachment(db: D1Database, a: AttachmentRecord): Promise<boolean> {
@@ -100,6 +73,7 @@ export async function upsertFolder(db: D1Database, f: FolderRecord): Promise<boo
 type NoteRow = {
   id: string; body: string; importance: number; created_at: number; updated_at: number;
   deleted: 0 | 1; folder_id: string | null; order_key: number | null;
+  remind_at: number | null; repeat_rule: string | null;
 };
 type AttRow = { id: string; note_id: string; mime: string; size: number; created_at: number; updated_at: number; deleted: 0 | 1 };
 type FolderRow = {
@@ -151,7 +125,7 @@ export async function handleSync(req: Request, env: Env): Promise<Response> {
   await purgeExpiredTrash(env, now);
   const purgedIds: string[] = [];
   for (const n of body.notes ?? []) {
-    if (!(await upsertNote(env.DB, n))) purgedIds.push(n.id);
+    if ((await upsertNote(env.DB, n)) === "purged") purgedIds.push(n.id);
   }
   for (const a of body.attachments ?? []) {
     if (!(await upsertAttachment(env.DB, a))) purgedIds.push(a.id);
@@ -175,6 +149,7 @@ export async function handleSync(req: Request, env: Env): Promise<Response> {
     ...noteRows.results.map((r) => ({
       id: r.id, body: r.body, importance: r.importance,
       createdAt: r.created_at, updatedAt: r.updated_at, deleted: r.deleted, folderId: r.folder_id, orderKey: r.order_key,
+      remindAt: r.remind_at, repeatRule: r.repeat_rule,
     })),
     ...noteStubs,
   ];
