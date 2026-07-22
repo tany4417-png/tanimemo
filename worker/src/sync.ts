@@ -126,11 +126,32 @@ export async function handleSync(req: Request, env: Env): Promise<Response> {
   await purgeExpiredTrash(env, now);
   const purgedIds: string[] = [];
   for (const n of body.notes ?? []) {
+    // upsert前に旧値（実効値の比較用）を読んでおく。「発火済み」はreminders行の不在でしか
+    // 表現されないため、appliedのたびに無条件でsyncReminderRowを呼ぶと、単発発火→24時間以内に
+    // そのメモを編集（本文等・remind_at/repeat_rule/deletedは不変）→同期、という経路で
+    // deriveNextFireが「24時間以内の単発＝発火対象」を返し、消化済みの行が復活して重複通知になる。
+    const prior = await env.DB.prepare(`SELECT remind_at, repeat_rule, deleted FROM notes WHERE id=?1`)
+      .bind(n.id).first<{ remind_at: number | null; repeat_rule: string | null; deleted: number }>();
     const result = await upsertNote(env.DB, n);
     if (result === "purged") purgedIds.push(n.id);
     // "applied"のみ再導出するのは性能最適化。syncReminderRowはnotes確定値からの冪等導出なので、
     // staleで呼んでも正しさは壊れない（この分岐はテストでは守られていない）
-    else if (result === "applied") await syncReminderRow(env.DB, n.id, now);
+    else if (result === "applied") {
+      if (!prior) {
+        // 新規メモ（旧行なし）は常に呼ぶ
+        await syncReminderRow(env.DB, n.id, now);
+      } else {
+        // 既存メモは実効値（remind_at・repeat_rule・deleted）が変わったときだけ呼ぶ。
+        // "remindAt"がnにない（旧クライアント）場合、upsertNoteはremind_at/repeat_rule列に触れず
+        // 現状維持するため、実効値もprior（DBの旧値）のまま変わらない。
+        // ゴミ箱復元はdeletedの変化検知でカバーされる
+        const effRemindAt = "remindAt" in n ? (n.remindAt ?? null) : prior.remind_at;
+        const effRepeatRule = "remindAt" in n ? (n.repeatRule ?? null) : prior.repeat_rule;
+        const changed =
+          effRemindAt !== prior.remind_at || effRepeatRule !== prior.repeat_rule || n.deleted !== prior.deleted;
+        if (changed) await syncReminderRow(env.DB, n.id, now);
+      }
+    }
   }
   for (const a of body.attachments ?? []) {
     if (!(await upsertAttachment(env.DB, a))) purgedIds.push(a.id);

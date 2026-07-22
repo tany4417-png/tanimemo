@@ -64,6 +64,17 @@ describe("reminder derivation on sync", () => {
     await sync({ since: 0, notes: [note({ updatedAt: base, remindAt: at2, repeatRule: null })], attachments: [] });
     expect((await fireAt("n1"))?.next_fire_at).toBe(at1); // 勝者の値のまま
   });
+  it("発火済み単発＋24時間以内のbody編集で行が復活しない", async () => {
+    // 過去1時間前のremindAt（24時間以内なのでderiveNextFireはまだ「発火対象」を返しうる値）
+    const at = Date.now() - 3600_000;
+    await sync({ since: 0, notes: [note({ updatedAt: 1, remindAt: at, repeatRule: null })], attachments: [] });
+    expect((await fireAt("n1"))?.next_fire_at).toBe(at);
+    // 発火消化を模擬（runReminderTickが単発発火後にreminders行を削除するのと同じ状態を作る）
+    await env.DB.prepare("DELETE FROM reminders WHERE note_id=?").bind("n1").run();
+    // remind_at/repeat_ruleは変えずbodyだけ編集してupdatedAtを進める（実クライアントは常にペアで送る）
+    await sync({ since: 0, notes: [note({ updatedAt: 2, body: "edited", remindAt: at, repeatRule: null })], attachments: [] });
+    expect(await fireAt("n1")).toBeNull();
+  });
 });
 
 const addSub = (id: string) => env.DB.prepare(
