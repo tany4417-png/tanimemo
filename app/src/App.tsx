@@ -872,6 +872,8 @@ export default function App() {
       )}
       {view.name === "reminders" && (
         <RemindersScreen
+          syncBar={syncBar}
+          slideClass={slideClass}
           onOpenNote={(id) => goForward({ name: "note", id })}
           onBack={navigateBack}
         />
