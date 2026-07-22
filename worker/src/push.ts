@@ -12,7 +12,8 @@ export async function handleSubscribe(req: Request, env: Env): Promise<Response>
   await env.DB.prepare(
     `INSERT INTO push_subscriptions (id, endpoint, p256dh, auth, device_label, created_at)
      VALUES (?,?,?,?,?,?)
-     ON CONFLICT(endpoint) DO UPDATE SET p256dh=excluded.p256dh, auth=excluded.auth, device_label=excluded.device_label`
+     ON CONFLICT(endpoint) DO UPDATE SET
+       p256dh=excluded.p256dh, auth=excluded.auth, device_label=excluded.device_label, failed_count=0`
   ).bind(ulid(), b.endpoint, b.keys.p256dh, b.keys.auth, b.deviceLabel ?? "", Date.now()).run();
   return Response.json({ ok: true });
 }

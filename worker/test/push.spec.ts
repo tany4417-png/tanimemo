@@ -20,6 +20,14 @@ describe("push api", () => {
     expect(rows.results.length).toBe(1);
     expect((rows.results[0] as any).device_label).toBe("iPhone2");
   });
+  it("subscribe: 再購読でfailed_countがリセットされる", async () => {
+    await api("/api/push/subscribe", "POST", sub);
+    await env.DB.prepare("UPDATE push_subscriptions SET failed_count=3 WHERE endpoint=?").bind(sub.endpoint).run();
+    await api("/api/push/subscribe", "POST", sub);
+    const row = await env.DB.prepare("SELECT failed_count FROM push_subscriptions WHERE endpoint=?")
+      .bind(sub.endpoint).first<{ failed_count: number }>();
+    expect(row?.failed_count).toBe(0);
+  });
   it("unsubscribe: 削除される", async () => {
     await api("/api/push/subscribe", "POST", sub);
     await api("/api/push/subscribe", "DELETE", { endpoint: sub.endpoint });
