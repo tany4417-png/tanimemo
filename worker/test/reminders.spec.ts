@@ -54,7 +54,7 @@ describe("reminder derivation on sync", () => {
     await sync({ since: 0, notes: [note({ updatedAt: 2, body: "edited" })], attachments: [] });
     expect((await fireAt("n1"))?.next_fire_at).toBe(at);
   });
-  it("LWW負け（stale）のpushはremindersに影響しない", async () => {
+  it("LWW負け（stale）のpushはremindersの値を壊さない", async () => {
     const base = Date.now();
     const at1 = base + 3600_000;
     const at2 = base + 7200_000;

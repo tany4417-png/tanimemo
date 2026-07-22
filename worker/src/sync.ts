@@ -128,6 +128,8 @@ export async function handleSync(req: Request, env: Env): Promise<Response> {
   for (const n of body.notes ?? []) {
     const result = await upsertNote(env.DB, n);
     if (result === "purged") purgedIds.push(n.id);
+    // "applied"のみ再導出するのは性能最適化。syncReminderRowはnotes確定値からの冪等導出なので、
+    // staleで呼んでも正しさは壊れない（この分岐はテストでは守られていない）
     else if (result === "applied") await syncReminderRow(env.DB, n.id, now);
   }
   for (const a of body.attachments ?? []) {
