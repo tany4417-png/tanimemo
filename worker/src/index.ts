@@ -2,12 +2,17 @@ import { requireAuth } from "./auth";
 import { handleSync } from "./sync";
 import { handleAttachmentGet, handleAttachmentPut } from "./attachments";
 import { handleShare } from "./share";
+import { runReminderTick } from "./reminders";
+import { makeSender } from "./push-sender";
 
 export interface Env {
   DB: D1Database;
   ATT: R2Bucket;
   API_TOKEN: string;
   ASSETS: Fetcher;
+  VAPID_PUBLIC_KEY: string;
+  VAPID_PRIVATE_KEY: string;
+  VAPID_SUBJECT: string;
 }
 
 export default {
@@ -25,5 +30,8 @@ export default {
       return new Response("not found", { status: 404 });
     }
     return env.ASSETS.fetch(req);
+  },
+  async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext) {
+    ctx.waitUntil(runReminderTick(env.DB, Date.now(), makeSender(env)));
   },
 };
