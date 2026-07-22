@@ -4,6 +4,7 @@ import { handleAttachmentGet, handleAttachmentPut } from "./attachments";
 import { handleShare } from "./share";
 import { runReminderTick } from "./reminders";
 import { makeSender } from "./push-sender";
+import { handleVapid, handleSubscribe, handleUnsubscribe, handlePushTest } from "./push";
 
 export interface Env {
   DB: D1Database;
@@ -24,6 +25,10 @@ export default {
       if (url.pathname === "/api/health") return Response.json({ ok: true });
       if (url.pathname === "/api/sync" && req.method === "POST") return handleSync(req, env);
       if (url.pathname === "/api/share" && req.method === "POST") return handleShare(req, env);
+      if (url.pathname === "/api/push/vapid" && req.method === "GET") return handleVapid(env);
+      if (url.pathname === "/api/push/subscribe" && req.method === "POST") return handleSubscribe(req, env);
+      if (url.pathname === "/api/push/subscribe" && req.method === "DELETE") return handleUnsubscribe(req, env);
+      if (url.pathname === "/api/push/test" && req.method === "POST") return handlePushTest(req, env);
       const attMatch = url.pathname.match(/^\/api\/attachments\/([A-Za-z0-9]+)$/);
       if (attMatch && req.method === "GET") return handleAttachmentGet(attMatch[1], env);
       if (attMatch && req.method === "PUT") return handleAttachmentPut(attMatch[1], req, env);
