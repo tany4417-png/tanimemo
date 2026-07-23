@@ -7,7 +7,7 @@ import { canRedo, canUndo, histInit, histPush, histRedo, histUndo, type Hist } f
 import { highlightMatches } from "../lib/highlight";
 import { renderMarkdown, toggleCheckbox } from "../lib/markdown";
 import type { Note } from "../lib/types";
-import { BackIcon, BellIcon, ImageIcon, RedoIcon, UndoIcon } from "./icons";
+import { BackIcon, BellIcon, CloseIcon, ImageIcon, RedoIcon, UndoIcon } from "./icons";
 import { ImageOverlay, onImageDragStart } from "./ImageOverlay";
 import { ReminderSheet } from "./ReminderSheet";
 import { useAttachmentUrls } from "./useAttachmentUrls";
@@ -428,7 +428,7 @@ export function Gallery({
                 />
                 {showDeleteBadges && onDeleteAttachment && (
                   <button className="thumb-x" aria-label="この画像を削除" onClick={() => onDeleteAttachment(m.id)}>
-                    ×
+                    <CloseIcon size={14} />
                   </button>
                 )}
               </span>

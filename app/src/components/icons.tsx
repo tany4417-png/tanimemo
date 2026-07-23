@@ -121,3 +121,13 @@ export function BellIcon({ size = 24, className }: IconProps) {
     </svg>
   );
 }
+
+// 閉じる・削除の✕（フォント文字の×はサイズ・位置がフォント依存で汚いためSVGで統一する）
+export function CloseIcon({ size = 24, className }: IconProps) {
+  return (
+    <svg width={size} height={size} className={className} {...common}>
+      <line x1="6" y1="6" x2="18" y2="18" />
+      <line x1="18" y1="6" x2="6" y2="18" />
+    </svg>
+  );
+}

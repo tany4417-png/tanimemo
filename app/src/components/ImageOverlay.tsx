@@ -5,6 +5,7 @@ import { downloadUrlSpec } from "../lib/dragout";
 import { mimeToExt } from "../lib/export";
 import type { AttachmentMeta } from "../lib/types";
 import { clampPan, DOUBLE_TAP_SCALE, pinchScale, zoomAt, type ZoomState } from "../lib/zoom";
+import { CloseIcon } from "./icons";
 
 // タップ判定: 押下からこの距離・時間を超えたらタップ扱いしない（パン・ピンチと区別する）
 const TAP_SLOP_PX = 8;
@@ -152,7 +153,7 @@ export function ImageOverlay({
         alt=""
       />
       <button className="overlay-close" aria-label="閉じる" onClick={onClose}>
-        ✕
+        <CloseIcon size={18} />
       </button>
       {onDelete && (
         <button

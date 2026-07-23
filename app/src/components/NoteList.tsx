@@ -8,7 +8,7 @@ import type { Folder, Note } from "../lib/types";
 import { Breadcrumb } from "./Breadcrumb";
 import { CardThumbs } from "./CardThumbs";
 import { FolderCard } from "./FolderCard";
-import { BackIcon } from "./icons";
+import { BackIcon, CloseIcon } from "./icons";
 import { type ReorderHandler, SwipeableCard } from "./SwipeableCard";
 
 type Props = {
@@ -83,7 +83,7 @@ export function NoteList(p: Props) {
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => p.onQuery("")}
               >
-                ✕
+                <CloseIcon size={14} />
               </button>
             )}
           </div>
