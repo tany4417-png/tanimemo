@@ -29,7 +29,7 @@ import {
 import { shouldCompleteBack } from "./lib/gesture";
 import { createNote, discardIfEmptyNew, listActiveNotes, purgeExpiredTrashLocal, restoreNote, softDeleteNote, sweepEmptyNewNotes, updateNote, type NotePatch } from "./lib/notes";
 import type { ReorderPlan } from "./lib/reorder";
-import { searchNotes, sortNotes, type SortMode } from "./lib/sort";
+import { excludeReminders, searchNotes, sortNotes, type SortMode } from "./lib/sort";
 import { runSync } from "./lib/sync";
 import { clearUnread, pruneUnread, syncAppBadge } from "./lib/unread";
 
@@ -134,10 +134,11 @@ export default function App() {
   );
   const childFolders = useLiveQuery(() => listChildFolders(currentFolderId), [currentFolderId], []);
   const folderPathList = useLiveQuery(() => folderPath(currentFolderId), [currentFolderId], []);
-  // 検索が空のときだけ現在フォルダ直下に絞る。検索中は全フォルダ横断（従来どおり）
+  // 検索が空のときだけ現在フォルダ直下に絞る。検索中は全フォルダ横断（従来どおり）。
+  // 置き場の表示ではリマインダー付きメモを除く（リマインダーフォルダだけに出す。検索では見つかる）
   const isBrowsingFolder = query.trim() === "";
   const scopedNotes = useMemo(
-    () => (isBrowsingFolder ? notes.filter((n) => n.folderId === currentFolderId) : notes),
+    () => (isBrowsingFolder ? excludeReminders(notes.filter((n) => n.folderId === currentFolderId)) : notes),
     [notes, isBrowsingFolder, currentFolderId]
   );
   const shown = useMemo(
