@@ -44,3 +44,6 @@ export type SyncResponse = {
   folders?: Omit<Folder, "dirty">[];
   purgedIds?: string[];
 };
+
+// 通知の未読記録（端末ローカル・同期しない）。push受信時にSWが積み、メモを開いたら消す
+export type UnreadRow = { noteId: string; firedAt: number };

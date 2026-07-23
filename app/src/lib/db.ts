@@ -1,5 +1,5 @@
 import Dexie, { type Table, type Transaction } from "dexie";
-import type { AttachmentMeta, Folder, Note } from "./types";
+import type { AttachmentMeta, Folder, Note, UnreadRow } from "./types";
 
 export type AttachmentBlobRow = { id: string; blob: Blob };
 export type MetaRow = { key: string; value: number | string };
@@ -25,6 +25,7 @@ export class TanimemoDB extends Dexie {
   attachmentBlobs!: Table<AttachmentBlobRow, string>;
   meta!: Table<MetaRow, string>;
   folders!: Table<Folder, string>;
+  unread!: Table<UnreadRow, string>;
 
   constructor() {
     super("tanimemo");
@@ -43,6 +44,14 @@ export class TanimemoDB extends Dexie {
         folders: "id, parentId, updatedAt, dirty",
       })
       .upgrade(migrateNotesFolderId);
+    this.version(3).stores({
+      notes: "id, updatedAt, createdAt, importance, dirty, folderId",
+      attachments: "id, noteId, updatedAt, dirty",
+      attachmentBlobs: "id",
+      meta: "key",
+      folders: "id, parentId, updatedAt, dirty",
+      unread: "noteId",
+    });
   }
 }
 
