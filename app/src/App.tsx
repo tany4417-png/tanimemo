@@ -31,6 +31,7 @@ import { createNote, discardIfEmptyNew, listActiveNotes, purgeExpiredTrashLocal,
 import type { ReorderPlan } from "./lib/reorder";
 import { searchNotes, sortNotes, type SortMode } from "./lib/sort";
 import { runSync } from "./lib/sync";
+import { clearUnread, pruneUnread, syncAppBadge } from "./lib/unread";
 
 type View = { name: "list" } | { name: "note"; id: string; isNew?: boolean } | { name: "settings" } | { name: "trash" } | { name: "reminders" };
 
@@ -311,6 +312,23 @@ export default function App() {
     void check();
     document.addEventListener("visibilitychange", check);
     return () => document.removeEventListener("visibilitychange", check);
+  }, []);
+
+  // メモを開いたら通知の未読を解除する。一覧タップ・リマインダー一覧・通知タップ・起動URLの
+  // 全経路が view=note に収束するため、ここ1箇所でよい（clearUnread内でアイコンバッジも更新される）
+  useEffect(() => {
+    if (view.name === "note") void clearUnread(view.id).catch(() => {});
+  }, [view]);
+
+  // 起動時: 消えた・ゴミ箱行きメモの未読を掃除してバッジを実数に合わせる。
+  // 復帰時: SW（別コンテキスト）が積んだ未読をアイコンバッジへ反映し直す
+  useEffect(() => {
+    void pruneUnread().catch(() => {});
+    const onVis = () => {
+      if (document.visibilityState === "visible") void syncAppBadge().catch(() => {});
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
   }, []);
 
   // 対象メモがローカルに存在する・かつゴミ箱でない場合だけnoteビューを開き、それ以外はlistへ
