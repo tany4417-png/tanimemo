@@ -27,6 +27,7 @@ import {
   updateFolder,
 } from "./lib/folders";
 import { shouldCompleteBack } from "./lib/gesture";
+import { saveToken } from "./lib/invite";
 import { createNote, discardIfEmptyNew, listActiveNotes, purgeExpiredTrashLocal, restoreNote, softDeleteNote, sweepEmptyNewNotes, updateNote, type NotePatch } from "./lib/notes";
 import type { ReorderPlan } from "./lib/reorder";
 import { excludeReminders, searchNotes, sortNotes, type SortMode } from "./lib/sort";
@@ -879,7 +880,9 @@ export default function App() {
           slideClass={slideClass}
           token={token}
           onSave={(t) => {
-            localStorage.setItem("tanimemo.token", t);
+            void saveToken(t).then((ok) => {
+              if (!ok) alert("トークンを端末に保存できませんでした。次回起動時は再入力が必要です");
+            });
             setToken(t);
             goForward({ name: "list" });
           }}
