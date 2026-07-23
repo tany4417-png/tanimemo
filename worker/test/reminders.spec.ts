@@ -165,4 +165,23 @@ describe("runReminderTick", () => {
     const retries = await env.DB.prepare("SELECT * FROM push_retries").all();
     expect(retries.results.length).toBe(0);
   });
+  it("payloadはtitle=1行目・body=2行目以降の抜粋", async () => {
+    const now = Date.now();
+    await addSub("s1");
+    await addNote("n1", now - 1000, null); await addFire("n1", now - 1000);
+    const payloads: string[] = [];
+    await runReminderTick(env.DB, now, async (_sub, payload) => { payloads.push(payload); return { ok: true }; });
+    expect(JSON.parse(payloads[0])).toEqual({ noteId: "n1", title: "n1 title", body: "body" });
+  });
+  it("1行だけのメモはpayloadにbodyキー自体を入れない", async () => {
+    const now = Date.now();
+    await addSub("s1");
+    await env.DB.prepare(
+      "INSERT INTO notes (id, body, importance, created_at, updated_at, deleted, received_at, remind_at, repeat_rule) VALUES (?,?,0,1,1,0,1,?,NULL)")
+      .bind("n2", "一行だけ", now - 1000).run();
+    await addFire("n2", now - 1000);
+    const payloads: string[] = [];
+    await runReminderTick(env.DB, now, async (_sub, payload) => { payloads.push(payload); return { ok: true }; });
+    expect(JSON.parse(payloads[0])).toEqual({ noteId: "n2", title: "一行だけ" });
+  });
 });

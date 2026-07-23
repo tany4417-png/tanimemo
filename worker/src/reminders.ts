@@ -23,8 +23,8 @@ export type PushSender = (sub: SubRow, payload: string) => Promise<{ ok: boolean
 // 購読2台（iPhone+PC）前提の試算。3台以上に増やす場合は上限を再計算すること
 const TICK_LIMIT = 4;
 
-async function dispatchToAll(db: D1Database, noteId: string, title: string, send: PushSender, subs: SubRow[]) {
-  const payload = JSON.stringify({ noteId, title });
+async function dispatchToAll(db: D1Database, noteId: string, body: string, send: PushSender, subs: SubRow[]) {
+  const payload = buildPayload(noteId, body);
   for (const sub of subs) {
     // PushSender契約（例外を投げずok:falseを返す）違反のモック・将来変更への保険。
     // 例外時もstatus 0の失敗と同じ扱いにし、1件の異常が他の購読への送信とtickの完走を壊さないようにする
@@ -45,6 +45,17 @@ function noteTitle(body: string): string {
   return (body.split("\n")[0] || "メモ").slice(0, 80);
 }
 
+// 通知本文: 2行目以降を1行に潰した抜粋。1行目はtitleに出すので重複させない
+function noteBodyPreview(body: string): string {
+  return body.split("\n").slice(1).join(" ").replace(/\s+/g, " ").trim().slice(0, 80);
+}
+
+// pushペイロード。bodyが空（1行だけのメモ）のときはキー自体を省き、SW側でbody無し通知にする
+function buildPayload(noteId: string, body: string): string {
+  const preview = noteBodyPreview(body);
+  return JSON.stringify({ noteId, title: noteTitle(body), ...(preview ? { body: preview } : {}) });
+}
+
 export async function runReminderTick(db: D1Database, now: number, send: PushSender): Promise<void> {
   const subs = (await db.prepare("SELECT id, endpoint, p256dh, auth FROM push_subscriptions").all<SubRow>()).results;
 
@@ -58,7 +69,7 @@ export async function runReminderTick(db: D1Database, now: number, send: PushSen
       .bind(r.note_id, r.subscription_id).run();
     const sub = subs.find(s => s.id === r.subscription_id);
     if (!sub || r.body == null || r.deleted) continue; // メモか購読が消えていたら破棄
-    const res = await send(sub, JSON.stringify({ noteId: r.note_id, title: noteTitle(r.body) })).catch(() => ({ ok: false as const, status: 0 }));
+    const res = await send(sub, buildPayload(r.note_id, r.body)).catch(() => ({ ok: false as const, status: 0 }));
     if (!res.ok && (res.status === 404 || res.status === 410)) {
       await db.prepare("DELETE FROM push_subscriptions WHERE id=?").bind(sub.id).run();
     } // 再々失敗は諦める（push_retriesに積み直さない）
@@ -76,7 +87,7 @@ export async function runReminderTick(db: D1Database, now: number, send: PushSen
       await db.prepare("DELETE FROM reminders WHERE note_id=?").bind(d.note_id).run();
       continue;
     }
-    await dispatchToAll(db, d.note_id, noteTitle(d.body), send, subs);
+    await dispatchToAll(db, d.note_id, d.body, send, subs);
     if (rule) {
       const next = nextFireAt(d.remind_at, rule, now);
       if (next == null) await db.prepare("DELETE FROM reminders WHERE note_id=?").bind(d.note_id).run();
