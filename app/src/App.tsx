@@ -172,6 +172,9 @@ export default function App() {
       const result = await runSync(token);
       setFailedAttachments(result.failedAttachments);
       await repairOrphansSafely();
+      // ゴミ箱行き・他端末削除・フォルダごと削除の未読をここで一括掃除する
+      // （削除経路ごとの呼び漏れを同期のたびに自己修復）
+      void pruneUnread().catch(() => {});
       setStatus("idle");
       setLastSync(Date.now());
     } catch {

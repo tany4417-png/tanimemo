@@ -29,11 +29,13 @@ self.addEventListener("push", (event) => {
     noteId = data?.noteId;
   } catch { /* フォールバック文言のまま */ }
   event.waitUntil((async () => {
-    // 未読記録＋アイコンバッジ。失敗しても通知表示は必ず行う（表示が最優先）
+    // 通知表示を最優先で行う。markUnreadをawaitで先に置くと、iOS Safariの
+    // IndexedDBストール（reject/resolveのどちらもされない）でここに到達しなくなるリスクがあるため、
+    // 通知表示を先に済ませてから未読記録＋アイコンバッジ更新（失敗しても通知表示は済んでいるので黙認）を行う
+    await self.registration.showNotification(title, { ...(body ? { body } : {}), data: { noteId } });
     try {
       if (noteId) await markUnread(noteId);
     } catch { /* IndexedDB障害等。バッジは補助表示なので黙認 */ }
-    await self.registration.showNotification(title, { ...(body ? { body } : {}), data: { noteId } });
   })());
 });
 
