@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { collectDiagnostics, type Diagnostics } from "../lib/diagnostics";
 import { disablePush, ensurePushSubscription, isPushEnabled, sendTestPush } from "../lib/push";
-import { BackIcon, BellIcon, ExportIcon, TrashIcon } from "./icons";
+import { BackIcon, ExportIcon, TrashIcon } from "./icons";
 
 // 診断パネルの表示・コピー用にテキスト整形する（コンポーネント専用の純関数のため単体テストは設けていない。
 // 集計自体はlib/diagnostics.tsのcollectDiagnosticsでテスト済み）
@@ -29,10 +29,9 @@ type Props = {
   onBack: () => void;
   onExport: () => void;
   onTrash: () => void;
-  onReminders: () => void;
 };
 
-export function Settings({ syncBar, slideClass, token, onSave, onBack, onExport, onTrash, onReminders }: Props) {
+export function Settings({ syncBar, slideClass, token, onSave, onBack, onExport, onTrash }: Props) {
   const [value, setValue] = useState(token);
   const diagnostics = useLiveQuery(collectDiagnostics, [], null);
   const [pushOn, setPushOn] = useState(false);
@@ -77,10 +76,6 @@ export function Settings({ syncBar, slideClass, token, onSave, onBack, onExport,
           <button onClick={onTrash}>
             <TrashIcon size={18} />
             ゴミ箱
-          </button>
-          <button onClick={onReminders}>
-            <BellIcon size={18} />
-            通知予定
           </button>
           <label>
             <input

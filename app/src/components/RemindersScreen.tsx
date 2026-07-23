@@ -39,7 +39,7 @@ export function RemindersScreen({ syncBar, slideClass, onOpenNote, onBack }: Pro
           <button className="icon-btn" aria-label="戻る" onClick={onBack}>
             <BackIcon />
           </button>
-          <h2>通知予定</h2>
+          <h2>リマインダー</h2>
         </div>
       </div>
       <div className="screen-body">

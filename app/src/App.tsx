@@ -428,7 +428,7 @@ export default function App() {
         return;
       }
       if (view.name === "reminders") {
-        setView({ name: "settings" });
+        setView({ name: "list" });
         return;
       }
       if (view.name === "list" && currentFolderId !== null) {
@@ -788,6 +788,7 @@ export default function App() {
           onOpenFolder={onOpenFolder}
           onNavigateUp={onNavigateUp}
           onBack={navigateBack}
+          onOpenReminders={() => goForward({ name: "reminders" })}
           onCreateFolder={onCreateFolder}
           onRenameCurrentFolder={onRenameCurrentFolder}
           onDeleteFolder={onDeleteFolder}
@@ -889,7 +890,6 @@ export default function App() {
             URL.revokeObjectURL(a.href);
           }}
           onTrash={() => goForward({ name: "trash" })}
-          onReminders={() => goForward({ name: "reminders" })}
         />
       )}
       {view.name === "trash" && (

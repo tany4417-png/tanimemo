@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { useLiveQuery } from "dexie-react-hooks";
+import { db } from "../lib/db";
 import { firstLineTitle, urlOnly } from "../lib/markdown";
 import { reminderLabel } from "../lib/reminder-label";
 import { makeSnippet } from "../lib/search";
@@ -9,6 +11,7 @@ import { Breadcrumb } from "./Breadcrumb";
 import { CardThumbs } from "./CardThumbs";
 import { FolderCard } from "./FolderCard";
 import { BackIcon, CloseIcon } from "./icons";
+import { ReminderFolderCard } from "./ReminderFolderCard";
 import { type ReorderHandler, SwipeableCard } from "./SwipeableCard";
 
 type Props = {
@@ -36,6 +39,8 @@ type Props = {
   onNavigateUp: (id: string | null) => void;
   // ツールバーの「親フォルダへ戻る」ボタン。navigateBack（App.tsx）をそのまま渡す
   onBack: () => void;
+  // リマインダー仮想フォルダのタップ（ルート表示時のみ描画される）
+  onOpenReminders: () => void;
   onCreateFolder: () => void;
   onRenameCurrentFolder: () => void;
   onDeleteFolder: (id: string) => void;
@@ -49,6 +54,13 @@ export function NoteList(p: Props) {
   const isBrowsingFolder = p.isBrowsingFolder;
   // スワイプで削除ボタンが開いているカードのid（メモ・フォルダ共通、開けるのは同時に1枚だけ）
   const [openId, setOpenId] = useState<string | null>(null);
+
+  // 通知未読のメモid集合。カードの赤点表示用（未読はTask 3のunreadテーブル・端末ローカル）
+  const unreadIds = useLiveQuery(
+    async () => new Set((await db.unread.toArray()).map((u) => u.noteId)),
+    [],
+    new Set<string>()
+  );
 
   // ドラッグ中のカードを他カードの前/後へ挿入する（同種のみ）。前後キーの計算はplanReorder（純関数）に委ね、
   // ここでは対象リスト（現在の表示順）を渡してApp側の書き込みハンドラへ計画を渡すだけにする
@@ -113,6 +125,9 @@ export function NoteList(p: Props) {
             className={`list-content ${p.slideClass}`}
             key={p.currentFolderId ?? "root"}
           >
+            {isBrowsingFolder && p.currentFolderId === null && (
+              <ReminderFolderCard onOpen={p.onOpenReminders} />
+            )}
             {isBrowsingFolder &&
               p.childFolders.map((f) => (
                 <FolderCard
@@ -150,6 +165,7 @@ export function NoteList(p: Props) {
                 onReorder={handleReorderNote}
               >
                 <div className="card-title">
+                  {unreadIds.has(n.id) && <span className="unread-dot" aria-label="未読の通知" />}
                   {n.importance > 0 && <span className="card-stars">{"★".repeat(n.importance)}</span>}
                   {(() => {
                     const url = urlOnly(n.body);
