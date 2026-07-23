@@ -215,6 +215,8 @@ mark.search-hit { background: #ffe08a; color: inherit; border-radius: 2px; paddi
   background: var(--vermilion); color: #fff; font-size: 11px; font-weight: 700;
   display: inline-flex; align-items: center; justify-content: center;
 }
+/* リマインダー一覧の見出しを伸ばし、「新規」ボタンを右端へ寄せる */
+.reminders .toolbar h2 { flex: 1; }
 /* 未読メモカードの赤点（タイトル先頭） */
 .unread-dot {
   flex: none; display: inline-block; width: 8px; height: 8px; border-radius: 50%;
@@ -308,6 +310,8 @@ button.icon-btn.accent { border-color: var(--indigo); color: var(--indigo); }
   right: -8px;
   width: 28px;
   height: 28px;
+  /* 汎用buttonのmin-height:36pxが28pxを押し上げて楕円になるのを防ぐ（まん丸を保つ） */
+  min-height: 0;
   border-radius: 50%;
   border: 2px solid var(--paper);
   background: var(--vermilion);
@@ -342,14 +346,10 @@ button.icon-btn.accent { border-color: var(--indigo); color: var(--indigo); }
   border: 1px solid var(--rule); border-radius: 999px; padding: 1px 8px;
 }
 
-/* 通知予定一覧（RemindersScreen）。既存のカード一覧と同じ縦積みの行にする */
-.reminder-list { list-style: none; padding: 0; margin: 0; }
-.reminder-row {
-  display: flex; justify-content: space-between; align-items: center; gap: 8px;
-  background: var(--card); border: 1px solid var(--rule); border-radius: 8px;
-  padding: 10px 12px; margin-bottom: 10px; cursor: pointer;
-}
-.reminder-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* リマインダー一覧（RemindersScreen）。行はSwipeableCard（.card）なので見た目はカード側が持ち、
+   ここは行内の横並びレイアウトだけを受け持つ */
+.reminder-row { display: flex; align-items: center; gap: 8px; }
+.reminder-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .reminder-when { flex: none; font-size: 12px; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
 /* 発火済み（単発の通知予定が過ぎたもの）は末尾に回した上で減光する */
 .reminder-row.fired { opacity: 0.5; }

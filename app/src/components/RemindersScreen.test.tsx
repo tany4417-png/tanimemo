@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { db, resetDbForTests } from "../lib/db";
 import { RemindersScreen } from "./RemindersScreen";
 
@@ -9,7 +9,10 @@ const base = { importance: 0 as const, createdAt: 1, updatedAt: 1, deleted: 0 as
 
 // 他画面（TrashScreen等）と同様、syncBar/slideClassはApp.tsxが一度だけ組み立てて渡すが、
 // 単体テストでは中身を問わないのでnull/空文字で十分
-const screenProps = { syncBar: null, slideClass: "" };
+const screenProps = { syncBar: null, slideClass: "", onCreate: () => {}, onDelete: () => {} };
+
+// 行はSwipeableCard（.card.reminder-row）になったため、role=listitemではなくクラスで拾う
+const rowEls = () => Array.from(document.querySelectorAll<HTMLElement>(".reminder-row"));
 
 describe("RemindersScreen", () => {
   beforeEach(async () => { await resetDbForTests(); });
@@ -20,7 +23,8 @@ describe("RemindersScreen", () => {
       { ...base, id: "b", body: "先のメモ", remindAt: now + 3600_000 },
     ]);
     render(<RemindersScreen {...screenProps} onOpenNote={() => {}} onBack={() => {}} />);
-    const items = await screen.findAllByRole("listitem");
+    await screen.findByText("先のメモ");
+    const items = rowEls();
     expect(items[0].textContent).toContain("先のメモ");
     expect(items[1].textContent).toContain("後のメモ");
   });
@@ -31,7 +35,8 @@ describe("RemindersScreen", () => {
       { ...base, id: "b", body: "過去", remindAt: now - 3 * 86400_000 },
     ]);
     render(<RemindersScreen {...screenProps} onOpenNote={() => {}} onBack={() => {}} />);
-    const items = await screen.findAllByRole("listitem");
+    await screen.findByText("過去");
+    const items = rowEls();
     expect(items[1].textContent).toContain("過去");
     expect(items[1].className).toContain("fired");
   });
@@ -40,13 +45,44 @@ describe("RemindersScreen", () => {
     render(<RemindersScreen {...screenProps} onOpenNote={() => {}} onBack={() => {}} />);
     expect(screen.queryByText(/ゴミ/)).toBeNull();
   });
-  it("行をクリックするとonOpenNoteが該当idで呼ばれる", async () => {
+  it("新規ボタンでonCreateが呼ばれる", async () => {
+    const onCreate = vi.fn();
+    render(<RemindersScreen {...screenProps} onCreate={onCreate} onOpenNote={() => {}} onBack={() => {}} />);
+    screen.getByRole("button", { name: "新規" }).click();
+    expect(onCreate).toHaveBeenCalled();
+  });
+  it("行をタップするとonOpenNoteが該当idで呼ばれる", async () => {
     const now = Date.now();
     await db.notes.add({ ...base, id: "a", body: "タップ対象", remindAt: now + 3600_000 });
     const onOpenNote = vi.fn();
     render(<RemindersScreen {...screenProps} onOpenNote={onOpenNote} onBack={() => {}} />);
-    const item = await screen.findByRole("listitem");
-    item.click();
+    await screen.findByText("タップ対象");
+    // SwipeableCardのタップ判定はpointerdown→(移動なし)→pointerupで成立する
+    const item = rowEls()[0];
+    fireEvent.pointerDown(item);
+    fireEvent.pointerUp(item);
     expect(onOpenNote).toHaveBeenCalledWith("a");
+  });
+  it("行の削除ボタンでonDeleteが該当idで呼ばれる", async () => {
+    const now = Date.now();
+    await db.notes.add({ ...base, id: "a", body: "削除対象", remindAt: now + 3600_000 });
+    const onDelete = vi.fn();
+    render(<RemindersScreen {...screenProps} onDelete={onDelete} onOpenNote={() => {}} onBack={() => {}} />);
+    await screen.findByText("削除対象");
+    screen.getByRole("button", { name: "削除" }).click();
+    expect(onDelete).toHaveBeenCalledWith("a");
+  });
+  it("未読のメモの行に赤点が付く", async () => {
+    const now = Date.now();
+    await db.notes.bulkAdd([
+      { ...base, id: "a", body: "未読あり", remindAt: now + 3600_000 },
+      { ...base, id: "b", body: "未読なし", remindAt: now + 7200_000 },
+    ]);
+    await db.unread.add({ noteId: "a", firedAt: now });
+    render(<RemindersScreen {...screenProps} onOpenNote={() => {}} onBack={() => {}} />);
+    await screen.findByText("未読あり");
+    const items = rowEls();
+    expect(items[0].querySelector(".unread-dot")).not.toBeNull();
+    expect(items[1].querySelector(".unread-dot")).toBeNull();
   });
 });

@@ -33,7 +33,8 @@ import { searchNotes, sortNotes, type SortMode } from "./lib/sort";
 import { runSync } from "./lib/sync";
 import { clearUnread, pruneUnread, syncAppBadge } from "./lib/unread";
 
-type View = { name: "list" } | { name: "note"; id: string; isNew?: boolean } | { name: "settings" } | { name: "trash" } | { name: "reminders" };
+// withReminder: リマインダーフォルダの「新規」から開いたメモ。リマインダーシートを開いた状態で始める
+type View = { name: "list" } | { name: "note"; id: string; isNew?: boolean; withReminder?: boolean } | { name: "settings" } | { name: "trash" } | { name: "reminders" };
 
 // メモ内容の変更（App onChangeハンドラ経由）の操作ラベル。undo/redoボタンの表示にのみ使う
 function labelForNotePatch(patch: NotePatch): string {
@@ -807,6 +808,7 @@ export default function App() {
           slideClass={slideClass}
           note={current}
           startEditing={view.name === "note" && view.isNew === true}
+          startWithReminder={view.withReminder === true}
           onChange={(patch) => {
             // 逆操作に必要な旧値は、変更対象のフィールドだけをcurrentからスナップショットする
             const before: NotePatch = {};
@@ -910,6 +912,26 @@ export default function App() {
           slideClass={slideClass}
           onOpenNote={(id) => goForward({ name: "note", id })}
           onBack={navigateBack}
+          onDelete={(id) => {
+            // NoteListのスワイプ削除と同じ経路（ゴミ箱行き＋グローバルundo1エントリ）
+            void runAction(
+              "メモを削除",
+              async () => {
+                await softDeleteNote(id);
+              },
+              async () => {
+                await restoreNote(id);
+              }
+            );
+          }}
+          onCreate={async () => {
+            // リマインダーフォルダ発の新規＝通知付きメモ。ルート直下に作り、シートを開いた状態で始める。
+            // 新規は即表示（onCreateと同じ理由でスライドインを再生しない）
+            const n = await createNote("", null);
+            setNavDirection("forward");
+            setSuppressSlideIn(true);
+            setView({ name: "note", id: n.id, isNew: true, withReminder: true });
+          }}
         />
       )}
     </main>

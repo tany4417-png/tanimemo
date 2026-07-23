@@ -23,6 +23,8 @@ type Props = {
   slideClass: string;
   note: Note;
   startEditing?: boolean;
+  // リマインダーフォルダの「新規」から来たとき、リマインダーシートを開いた状態で始める
+  startWithReminder?: boolean;
   onChange: (patch: { body?: string; importance?: 0 | 1 | 2 | 3; remindAt?: number | null; repeatRule?: string | null }) => void;
   onDelete: () => void;
   onBack: () => void;
@@ -44,11 +46,11 @@ type Props = {
   flushRef: React.RefObject<(() => Promise<void>) | null>;
 };
 
-export function NoteScreen({ syncBar, slideClass, note, startEditing, onChange, onDelete, onBack, onMoveNote, onAttached, onDeleteAttachment, highlightQuery, onAutoSave, onEditSessionEnd, flushRef }: Props) {
+export function NoteScreen({ syncBar, slideClass, note, startEditing, startWithReminder, onChange, onDelete, onBack, onMoveNote, onAttached, onDeleteAttachment, highlightQuery, onAutoSave, onEditSessionEnd, flushRef }: Props) {
   const [editing, setEditing] = useState(startEditing ?? false);
   const [draft, setDraft] = useState(note.body);
   const [movePickerOpen, setMovePickerOpen] = useState(false);
-  const [reminderOpen, setReminderOpen] = useState(false);
+  const [reminderOpen, setReminderOpen] = useState(startWithReminder ?? false);
   const html = useMemo(() => renderMarkdown(note.body), [note.body]);
   // dangerouslySetInnerHTMLに渡す{__html}はオブジェクトごとメモ化する。React 19は参照が変わると
   // 文字列が同値でもinnerHTMLを再設定するため、インライン生成だと無関係な再レンダー（allFolders到着等）で
