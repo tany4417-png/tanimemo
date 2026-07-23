@@ -72,6 +72,14 @@ describe("RemindersScreen", () => {
     screen.getByRole("button", { name: "削除" }).click();
     expect(onDelete).toHaveBeenCalledWith("a");
   });
+  it("本文が空のメモ（画像のみ等）は仮タイトル「メモ」を出さない", async () => {
+    const now = Date.now();
+    await db.notes.add({ ...base, id: "a", body: "", remindAt: now + 3600_000 });
+    render(<RemindersScreen {...screenProps} onOpenNote={() => {}} onBack={() => {}} />);
+    // 行自体は出る（時刻ラベルで待つ）が、タイトル部は空のまま
+    await vi.waitFor(() => expect(rowEls().length).toBe(1));
+    expect(screen.queryByText("メモ")).toBeNull();
+  });
   it("未読のメモの行に赤点が付く", async () => {
     const now = Date.now();
     await db.notes.bulkAdd([

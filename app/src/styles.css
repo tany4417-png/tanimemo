@@ -347,8 +347,8 @@ button.icon-btn.accent { border-color: var(--indigo); color: var(--indigo); }
 }
 
 /* リマインダー一覧（RemindersScreen）。行はSwipeableCard（.card）なので見た目はカード側が持ち、
-   ここは行内の横並びレイアウトだけを受け持つ */
-.reminder-row { display: flex; align-items: center; gap: 8px; }
+   ここは1行目（赤点・タイトル・時刻）の横並びだけを受け持つ。サムネ（.card-thumbs）はその下に積む */
+.reminder-row-main { display: flex; align-items: center; gap: 8px; }
 .reminder-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .reminder-when { flex: none; font-size: 12px; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
 /* 発火済み（単発の通知予定が過ぎたもの）は末尾に回した上で減光する */

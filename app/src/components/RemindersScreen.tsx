@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "../lib/db";
 import { deriveReminderInfo } from "../lib/reminder-label";
+import { CardThumbs } from "./CardThumbs";
 import { BackIcon } from "./icons";
 import { SwipeableCard } from "./SwipeableCard";
 
@@ -37,7 +38,8 @@ export function RemindersScreen({ syncBar, slideClass, onOpenNote, onBack, onCre
         const info = deriveReminderInfo(n.remindAt, n.repeatRule, now);
         return {
           id: n.id,
-          title: (n.body.split("\n")[0] || "メモ").slice(0, 60),
+          // 本文が空（画像のみ等）なら空のまま。仮タイトル「メモ」は出さずサムネに任せる
+          title: n.body.split("\n")[0].slice(0, 60),
           fired: info.fired,
           shown: info.next ?? n.remindAt!,
           label: info.label,
@@ -74,9 +76,13 @@ export function RemindersScreen({ syncBar, slideClass, onOpenNote, onBack, onCre
               onOpen={() => onOpenNote(r.id)}
               className={r.fired ? "reminder-row fired" : "reminder-row"}
             >
-              {unreadIds.has(r.id) && <span className="unread-dot" aria-label="未読の通知" />}
-              <span className="reminder-title">{r.title}</span>
-              <span className="reminder-when">{r.label}</span>
+              <div className="reminder-row-main">
+                {unreadIds.has(r.id) && <span className="unread-dot" aria-label="未読の通知" />}
+                <span className="reminder-title">{r.title}</span>
+                <span className="reminder-when">{r.label}</span>
+              </div>
+              {/* 画像のみのメモでも中身がわかるよう、NoteListのカードと同じサムネイルを出す */}
+              <CardThumbs noteId={r.id} />
             </SwipeableCard>
           ))}
         </div>
