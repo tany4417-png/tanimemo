@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { db, resetDbForTests } from "./db";
 import { createFolder } from "./folders";
 import type { Note } from "./types";
-import { exportZip, localYmd, mimeToExt, noteContent, notePath, slugify } from "./export";
+import { exportZip, localYmd, noteContent, notePath, slugify } from "./export";
 
 beforeEach(async () => {
   await resetDbForTests();
@@ -22,12 +22,6 @@ describe("エクスポートの純関数", () => {
     expect(slugify("買い物 メモ/夏")).toBe("買い物-メモ-夏");
     expect(slugify("   ")).toBe("memo");
     expect(slugify("あ".repeat(40))).toHaveLength(30);
-  });
-
-  it("mimeToExtは既知の型を変換し未知はbin", () => {
-    expect(mimeToExt("image/png")).toBe("png");
-    expect(mimeToExt("image/jpeg")).toBe("jpg");
-    expect(mimeToExt("application/x-unknown")).toBe("bin");
   });
 
   it("notePathは日付-タイトル-ID末尾4桁.md", () => {

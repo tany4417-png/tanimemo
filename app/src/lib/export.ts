@@ -3,16 +3,12 @@ import { getImageBlob } from "./attachments";
 import { db } from "./db";
 import { folderPath } from "./folders";
 import { firstLineTitle } from "./markdown";
+import { mimeToExt } from "./mime";
 import type { Note } from "./types";
 
 export function slugify(title: string): string {
   const s = title.replace(/[\\/:*?"<>|#\s]+/g, "-").replace(/^-+|-+$/g, "");
   return s.slice(0, 30) || "memo";
-}
-
-export function mimeToExt(mime: string): string {
-  const map: Record<string, string> = { "image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/webp": "webp" };
-  return map[mime] ?? "bin";
 }
 
 export function localYmd(d: Date): string {

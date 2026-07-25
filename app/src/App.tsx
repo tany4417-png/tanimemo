@@ -7,7 +7,7 @@ import { Settings } from "./components/Settings";
 import { SyncStatus } from "./components/SyncStatus";
 import { TrashScreen } from "./components/TrashScreen";
 import { popRedo, popUndo, pushAction, type ActionStacks } from "./lib/actions";
-import { addImageFromBlob, restoreAttachment, softDeleteAttachment } from "./lib/attachments";
+import { addAttachment, restoreAttachment, softDeleteAttachment } from "./lib/attachments";
 import { db } from "./lib/db";
 import { exportZip, localYmd } from "./lib/export";
 import { ensurePushSubscription, isPushEnabled } from "./lib/push";
@@ -279,7 +279,7 @@ export default function App() {
       const images = files.filter((f) => f.type.startsWith("image/"));
       if (images.length > 0) {
         const n = await createNote("");
-        for (const f of images) await addImageFromBlob(n.id, f);
+        for (const f of images) await addAttachment(n.id, f);
         scheduleSync();
         return;
       }

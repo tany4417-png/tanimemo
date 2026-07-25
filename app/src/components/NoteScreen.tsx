@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
-import { addImageFromBlob } from "../lib/attachments";
+import { addAttachment } from "../lib/attachments";
 import { accentClassFor } from "../lib/colors";
 import { flattenFolderTree, listAllFolders } from "../lib/folders";
 import { canRedo, canUndo, histInit, histPush, histRedo, histUndo, type Hist } from "../lib/history";
@@ -249,7 +249,7 @@ export function NoteScreen({ syncBar, slideClass, note, startEditing, startWithR
   async function attachFiles(files: Iterable<File>) {
     const images = [...files].filter((f) => f.type.startsWith("image/"));
     if (images.length === 0) return;
-    for (const f of images) await addImageFromBlob(note.id, f);
+    for (const f of images) await addAttachment(note.id, f);
     onAttached?.();
   }
 
