@@ -99,3 +99,35 @@ export function deriveNextFire(remindAt: number, rule: RepeatRule | null, now: n
   }
   return nextFireAt(remindAt, rule, now);
 }
+
+// JSTの日付成分。カレンダー側でマスを組むために公開する（0=日曜）
+export function jstDateParts(ms: number): { y: number; mo: number; day: number; wd: number } {
+  return parts(ms);
+}
+
+// JSTのその日の0時0分（epoch ms）。moは0始まり
+export function jstDayStart(y: number, mo: number, day: number): number {
+  return jstMs(y, mo, day, 0);
+}
+
+// from〜to（両端含む）に入る発火時刻を昇順で返す。カレンダー表示用。
+// 単発（rule=null）は24時間ルールを使わない。過ぎた予定もカレンダーには残す方針のため。
+// limitは必須。intervalのn=1のような短周期で範囲が広いときの暴走を止める安全弁
+export function occurrencesInRange(
+  remindAt: number,
+  rule: RepeatRule | null,
+  from: number,
+  to: number,
+  limit: number
+): number[] {
+  if (!rule) return remindAt >= from && remindAt <= to ? [remindAt] : [];
+  const out: number[] = [];
+  let cursor = from - 1;
+  while (out.length < limit) {
+    const next = nextFireAt(remindAt, rule, cursor);
+    if (next === null || next > to) break;
+    out.push(next);
+    cursor = next;
+  }
+  return out;
+}

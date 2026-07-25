@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { nextFireAt, deriveNextFire, parseRepeatRule, DAY_MS } from "../../../shared/repeat";
+import { nextFireAt, deriveNextFire, parseRepeatRule, DAY_MS, occurrencesInRange, jstDateParts, jstDayStart } from "../../../shared/repeat";
 
 // JSTの日時を作るテストヘルパ（+9h固定）
 const jst = (y: number, mo: number, d: number, hh = 9, mm = 0) =>
@@ -101,4 +101,55 @@ describe("parseRepeatRule", () => {
   it("nth_weekdayのnth=0: null", () => expect(parseRepeatRule('{"type":"nth_weekday","nth":0,"weekday":1}')).toBeNull());
   it("nth_weekdayのweekday=7: null", () => expect(parseRepeatRule('{"type":"nth_weekday","nth":1,"weekday":7}')).toBeNull());
   it("未知のtype: null", () => expect(parseRepeatRule('{"type":"unknown"}')).toBeNull());
+});
+
+describe("occurrencesInRange", () => {
+  // JST 2026-08-01 00:00 から 42日ぶん
+  const from = jstDayStart(2026, 7, 1);
+  const to = from + 42 * 86400_000 - 1;
+
+  it("単発は範囲内なら1件、範囲外なら0件", () => {
+    const at = jstDayStart(2026, 7, 10) + 9 * 3600_000;
+    expect(occurrencesInRange(at, null, from, to, 200)).toEqual([at]);
+    const far = jstDayStart(2026, 11, 1);
+    expect(occurrencesInRange(far, null, from, to, 200)).toEqual([]);
+  });
+
+  it("単発は24時間を過ぎた過去でも範囲内なら返す（カレンダーは履歴も見せる）", () => {
+    const past = jstDayStart(2026, 7, 2) + 9 * 3600_000;
+    const laterRange = { from: jstDayStart(2026, 7, 1), to: jstDayStart(2026, 7, 20) };
+    expect(occurrencesInRange(past, null, laterRange.from, laterRange.to, 200)).toEqual([past]);
+  });
+
+  it("毎日は範囲の日数ぶん返る", () => {
+    const at = jstDayStart(2026, 7, 1) + 7 * 3600_000;
+    expect(occurrencesInRange(at, { type: "daily" }, from, to, 200)).toHaveLength(42);
+  });
+
+  it("毎週(火・木)は範囲内の該当曜日だけ返る", () => {
+    const at = jstDayStart(2026, 7, 4) + 7 * 3600_000; // 2026-08-04 は火曜
+    const res = occurrencesInRange(at, { type: "weekly", weekdays: [2, 4] }, from, to, 200);
+    expect(res.every((t) => [2, 4].includes(jstDateParts(t).wd))).toBe(true);
+    expect(res.length).toBeGreaterThan(0);
+  });
+
+  it("毎月31日は31日のない月を飛ばす", () => {
+    const at = jstDayStart(2026, 7, 31) + 9 * 3600_000;
+    const wide = { from: jstDayStart(2026, 7, 1), to: jstDayStart(2026, 10, 30) };
+    const res = occurrencesInRange(at, { type: "monthly", day: 31 }, wide.from, wide.to, 200);
+    // 8月31日・10月31日は在り、9月31日は無い
+    expect(res.map((t) => jstDateParts(t).mo)).toEqual([7, 9]);
+  });
+
+  it("limitで打ち切る", () => {
+    const at = jstDayStart(2026, 7, 1) + 7 * 3600_000;
+    expect(occurrencesInRange(at, { type: "daily" }, from, to, 5)).toHaveLength(5);
+  });
+
+  it("開始日より前の範囲には何も返さない", () => {
+    // ブリーフ記載の (2026, 8, 1) は9/1 09:00でfrom/to(8/1-9/11)の範囲内に収まってしまい
+    // 「範囲外」の意図を検証できないため、範囲の終端(9/11 23:59:59.999)より後の10/1に修正
+    const at = jstDayStart(2026, 9, 1) + 9 * 3600_000;
+    expect(occurrencesInRange(at, { type: "daily" }, from, to, 200)).toEqual([]);
+  });
 });
