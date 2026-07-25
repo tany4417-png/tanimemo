@@ -11,3 +11,16 @@ export function fallbackName(mime: string, createdAt: number): string {
   const stamp = `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}`;
   return `${isImageMime(mime) ? "画像" : "ファイル"}-${stamp}.${mimeToExt(mime)}`;
 }
+
+// 行頭に出す拡張子ラベル。ファイル名の拡張子を優先し、無ければmimeから引く
+export function extLabel(name: string | undefined, mime: string): string {
+  const dot = name ? name.lastIndexOf(".") : -1;
+  const fromName = dot > 0 && dot < (name as string).length - 1 ? (name as string).slice(dot + 1) : "";
+  return (fromName || mimeToExt(mime)).slice(0, 4).toUpperCase();
+}
+
+export function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}

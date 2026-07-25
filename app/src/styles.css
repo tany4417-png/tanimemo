@@ -406,3 +406,16 @@ button.icon-btn.accent { border-color: var(--indigo); color: var(--indigo); }
   .slide-in-left, .slide-in-right { animation: none; }
   .dot.syncing { animation: none; }
 }
+
+/* 非画像添付の行リスト（PDF等）。行頭に拡張子ラベル、右端に開く・保存・削除 */
+.att-files { display: flex; flex-direction: column; gap: 6px; padding: 8px 0; }
+.att-file { display: flex; align-items: center; gap: 8px; background: var(--card);
+  border: 1px solid var(--rule); border-radius: 10px; padding: 8px 10px; }
+.att-file-icon { color: var(--ink-soft); flex: none; }
+.att-file-ext { font-size: 10px; font-weight: 700; color: var(--ink-soft);
+  border: 1px solid var(--rule); border-radius: 4px; padding: 1px 4px; flex: none; }
+.att-file-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
+.att-file-size { font-size: 11px; color: var(--ink-soft); flex: none; }
+.att-file-btn { font-size: 12px; color: var(--indigo); text-decoration: none; border: 1px solid var(--rule);
+  border-radius: 6px; padding: 3px 8px; background: var(--card); flex: none; }
+.att-file-btn.icon { display: inline-flex; align-items: center; padding: 3px 6px; }

@@ -7,6 +7,7 @@ import { canRedo, canUndo, histInit, histPush, histRedo, histUndo, type Hist } f
 import { highlightMatches } from "../lib/highlight";
 import { renderMarkdown, toggleCheckbox } from "../lib/markdown";
 import type { Note } from "../lib/types";
+import { AttachmentFiles } from "./AttachmentFiles";
 import { BackIcon, BellIcon, CloseIcon, ImageIcon, RedoIcon, UndoIcon } from "./icons";
 import { ImageOverlay, onImageDragStart } from "./ImageOverlay";
 import { ReminderSheet } from "./ReminderSheet";
@@ -371,6 +372,7 @@ export function NoteScreen({ syncBar, slideClass, note, startEditing, startWithR
               {/* 編集中は貼った画像がすぐ見えるよう、ギャラリーを本文入力欄の上に置く（2026-07-21 オーナー要望）。
                   ×バッジ（1枚ずつ削除）も編集中だけ出す */}
               <Gallery noteId={note.id} showDeleteBadges onDeleteAttachment={onDeleteAttachment} />
+              <AttachmentFiles noteId={note.id} showDelete onDeleteAttachment={onDeleteAttachment} />
               <textarea
                 ref={textareaRef}
                 className="editor"
@@ -388,6 +390,7 @@ export function NoteScreen({ syncBar, slideClass, note, startEditing, startWithR
                 <div ref={viewRef} className="note-view" onClick={clickView} dangerouslySetInnerHTML={htmlObj} />
               )}
               <Gallery noteId={note.id} onDeleteAttachment={onDeleteAttachment} />
+              <AttachmentFiles noteId={note.id} />
             </>
           )}
         </div>
