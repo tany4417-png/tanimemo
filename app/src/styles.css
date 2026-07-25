@@ -376,6 +376,8 @@ button.icon-btn.accent { border-color: var(--indigo); color: var(--indigo); }
 /* ドラッグ中は縮小したカードの下に赤い削除背景が透けて見えてしまうため隠す */
 .swipe-wrap:has(.dragging) .swipe-bg { opacity: 0; }
 [data-drop-folder].drop-active { outline: 2px solid var(--indigo); outline-offset: -2px; border-radius: 8px; background: #F2F4F0; }
+/* 外部（エクスプローラ等）からのファイルドロップ中に落とし先を示す枠。フォルダ移動用の.drop-activeとは別系統 */
+.file-drop-active { outline: 2px dashed var(--indigo); outline-offset: -6px; }
 
 /* 手動並べ替えの挿入インジケータ: 対象カードの上/下辺に2pxの線を出す。
    box-shadowで表現し、既存の影(--shadow-1, --shadow-2)を消さないよう並べて指定する */

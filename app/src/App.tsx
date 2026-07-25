@@ -378,6 +378,19 @@ export default function App() {
     setView({ name: "note", id: n.id, isNew: true });
   }, [currentFolderId]);
 
+  // 一覧画面に外部（エクスプローラ等）からファイルを落としたら、開いているフォルダの中に
+  // 新規メモを作って添付する（ルートならフォルダなし）。onPasteと同じaddAttachments/rejectedMessageの形
+  const onDropFiles = useCallback(
+    async (files: File[]) => {
+      if (files.length === 0) return;
+      const n = await createNote("", currentFolderId);
+      const rejected = await addAttachments(n.id, files);
+      if (rejected > 0) alert(rejectedMessage(rejected));
+      scheduleSync();
+    },
+    [currentFolderId, scheduleSync]
+  );
+
   // フォルダカードで下の階層へ入る（進み操作＝forward）
   const onOpenFolder = useCallback((id: string | null) => {
     setNavDirection("forward");
@@ -802,6 +815,7 @@ export default function App() {
           onMoveFolder={onMoveFolder}
           onReorderNote={onReorderNote}
           onReorderFolder={onReorderFolder}
+          onDropFiles={(files) => void onDropFiles(files)}
         />
       )}
       {view.name === "note" && current && (

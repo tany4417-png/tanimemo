@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { addAttachments, rejectedMessage } from "../lib/attachments";
 import { accentClassFor } from "../lib/colors";
+import { filesFromDataTransfer, hasFiles } from "../lib/filedrop";
 import { flattenFolderTree, listAllFolders } from "../lib/folders";
 import { canRedo, canUndo, histInit, histPush, histRedo, histUndo, type Hist } from "../lib/history";
 import { highlightMatches } from "../lib/highlight";
@@ -52,6 +53,8 @@ export function NoteScreen({ syncBar, slideClass, note, startEditing, startWithR
   const [draft, setDraft] = useState(note.body);
   const [movePickerOpen, setMovePickerOpen] = useState(false);
   const [reminderOpen, setReminderOpen] = useState(startWithReminder ?? false);
+  // 外部（エクスプローラ等）からのファイルドロップ中かどうか。枠線表示のみに使う
+  const [dropActive, setDropActive] = useState(false);
   const html = useMemo(() => renderMarkdown(note.body), [note.body]);
   // dangerouslySetInnerHTMLに渡す{__html}はオブジェクトごとメモ化する。React 19は参照が変わると
   // 文字列が同値でもinnerHTMLを再設定するため、インライン生成だと無関係な再レンダー（allFolders到着等）で
@@ -271,8 +274,31 @@ export function NoteScreen({ syncBar, slideClass, note, startEditing, startWithR
     }
   }
 
+  // 外部（エクスプローラ等）からのHTML5ドロップ受け入れ。カード並べ替え・フォルダ移動の既存D&D
+  // （SwipeableCard・dnd.ts）はpointerイベント系なので系統が別で競合しない
+  function onDragOver(e: React.DragEvent) {
+    if (!hasFiles(e.dataTransfer)) return;
+    e.preventDefault();
+    setDropActive(true);
+  }
+  function onDragLeave(e: React.DragEvent) {
+    if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+    setDropActive(false);
+  }
+  function onDrop(e: React.DragEvent) {
+    if (!hasFiles(e.dataTransfer)) return;
+    e.preventDefault();
+    setDropActive(false);
+    void attachFiles(filesFromDataTransfer(e.dataTransfer));
+  }
+
   return (
-    <div className={`note screen ${slideClass}`}>
+    <div
+      className={`note screen ${slideClass}${dropActive ? " file-drop-active" : ""}`}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+    >
       <div className="list-header">
         {syncBar}
         <div className="toolbar">
