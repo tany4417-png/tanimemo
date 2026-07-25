@@ -1,5 +1,5 @@
-import { SELF } from "cloudflare:test";
-import { describe, it, expect } from "vitest";
+import { SELF, env } from "cloudflare:test";
+import { describe, it, expect, afterEach } from "vitest";
 
 const TOKEN = { Authorization: "Bearer test-token" };
 
@@ -12,6 +12,13 @@ async function pull() {
 }
 
 describe("/api/share", () => {
+  // このdescribe内のテストは同一DBを共有する（ファイル単位の分離のみ）。
+  // 「LIMIT 1」「length(1)」のようなテーブル全体を見るアサーションが前のテストの残留行を拾わないよう、テストごとに掃除する
+  afterEach(async () => {
+    await env.DB.prepare("DELETE FROM notes").run();
+    await env.DB.prepare("DELETE FROM attachments").run();
+  });
+
   it("テキストが無印のメモになる（受信タグは付けない）", async () => {
     const form = new FormData();
     form.append("text", "https://example.com/article");
@@ -34,6 +41,18 @@ describe("/api/share", () => {
     expect(data.attachments[0].noteId).toBe(noteId);
     const get = await SELF.fetch(`https://example.com/api/attachments/${data.attachments[0].id}`, { headers: TOKEN });
     expect(new Uint8Array(await get.arrayBuffer())).toEqual(new Uint8Array([9, 8, 7]));
+  });
+
+  it("共有されたファイルの名前がattachments.nameに入る", async () => {
+    const form = new FormData();
+    form.append("file", new File([new Uint8Array([1, 2, 3])], "見積書.pdf", { type: "application/pdf" }));
+    const res = await SELF.fetch("https://example.com/api/share", {
+      method: "POST", headers: { Authorization: "Bearer test-token" }, body: form,
+    });
+    expect(res.status).toBe(200);
+    const row = await env.DB.prepare("SELECT name, mime FROM attachments LIMIT 1").first<{ name: string; mime: string }>();
+    expect(row?.name).toBe("見積書.pdf");
+    expect(row?.mime).toBe("application/pdf");
   });
 
   it("空のフォームは400", async () => {

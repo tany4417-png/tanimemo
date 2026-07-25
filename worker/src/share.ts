@@ -17,9 +17,11 @@ export async function handleShare(req: Request, env: Env): Promise<Response> {
   for (const f of files) {
     const attId = ulid();
     const mime = f.type || "application/octet-stream";
+    // ショートカット経由ではファイル名が空のことがある。その場合はidの末尾で識別できる名前を作る
+    const name = f.name && f.name !== "" ? f.name : `ファイル-${attId.slice(-6)}`;
     const data = await f.arrayBuffer();
     await env.ATT.put(`att/${attId}`, data, { httpMetadata: { contentType: mime } });
-    await upsertAttachment(env.DB, { id: attId, noteId, mime, size: data.byteLength, createdAt: now, updatedAt: now, deleted: 0 });
+    await upsertAttachment(env.DB, { id: attId, noteId, mime, size: data.byteLength, name, createdAt: now, updatedAt: now, deleted: 0 });
   }
   return Response.json({ ok: true, noteId });
 }
