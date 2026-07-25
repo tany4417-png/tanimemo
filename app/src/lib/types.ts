@@ -24,6 +24,8 @@ export type AttachmentMeta = {
   updatedAt: number;
   deleted: 0 | 1;
   dirty: 0 | 1;
+  // 元のファイル名。旧データには無いので、表示時はattachment-view.tsのfallbackNameで補う
+  name?: string;
 };
 
 export type Folder = {

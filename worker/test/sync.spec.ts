@@ -15,6 +15,13 @@ function folder(over: Record<string, unknown> = {}) {
   return { id: "01FOLDER", name: "仕事", parentId: null, createdAt: 100, updatedAt: 100, deleted: 0, ...over };
 }
 
+function att(over: Record<string, unknown> = {}) {
+  return {
+    id: "01ATT", noteId: "01NOTE", mime: "application/pdf", size: 10,
+    createdAt: 100, updatedAt: 100, deleted: 0, ...over,
+  };
+}
+
 describe("/api/sync", () => {
   afterEach(async () => {
     await env.DB.prepare("DELETE FROM notes").run();
@@ -95,11 +102,27 @@ describe("/api/sync", () => {
   });
 
   it("添付メタも往復する", async () => {
-    const att = { id: "01ATT", noteId: "01NOTE", mime: "image/png", size: 3, createdAt: 100, updatedAt: 100, deleted: 0 };
-    await sync({ since: 0, notes: [], attachments: [att] });
+    const attMeta = { id: "01ATT", noteId: "01NOTE", mime: "image/png", size: 3, createdAt: 100, updatedAt: 100, deleted: 0 };
+    await sync({ since: 0, notes: [], attachments: [attMeta] });
     const data = await (await sync({ since: 0, notes: [], attachments: [] })).json() as any;
     expect(data.attachments).toHaveLength(1);
     expect(data.attachments[0].noteId).toBe("01NOTE");
+  });
+
+  it("添付のnameがpush/pullで往復する", async () => {
+    await sync({ since: 0, notes: [], attachments: [att({ name: "見積書.pdf" })] });
+    const data = await (await sync({ since: 0, notes: [], attachments: [] })).json() as any;
+    expect(data.attachments[0].name).toBe("見積書.pdf");
+  });
+
+  it("nameフィールドを持たない旧クライアントのpushで既存の名前が消えない", async () => {
+    await sync({ since: 0, notes: [], attachments: [att({ name: "見積書.pdf", updatedAt: 100 })] });
+    // 旧クライアントはnameフィールド自体を送らない。更新時刻はこちらが新しい
+    await sync({ since: 0, notes: [], attachments: [att({ updatedAt: 200, size: 20 })] });
+    const data = await (await sync({ since: 0, notes: [], attachments: [] })).json() as any;
+    expect(data.attachments[0].name).toBe("見積書.pdf");
+    expect(data.attachments[0].size).toBe(20);
+    expect(data.attachments[0].updatedAt).toBe(200);
   });
 
   it("30日を過ぎた削除済みメモは同期時に完全削除される（本体は消え、削除スタブのみ残る）", async () => {

@@ -33,14 +33,28 @@ export async function upsertNote(db: D1Database, n: NoteRecord): Promise<UpsertR
 
 export async function upsertAttachment(db: D1Database, a: AttachmentRecord): Promise<boolean> {
   if (await isPurged(db, a.id)) return false;
-  await db.prepare(
-    `INSERT INTO attachments (id, note_id, mime, size, created_at, updated_at, deleted, received_at)
-     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
-     ON CONFLICT(id) DO UPDATE SET
-       mime = excluded.mime, size = excluded.size,
-       updated_at = excluded.updated_at, deleted = excluded.deleted, received_at = excluded.received_at
-     WHERE excluded.updated_at > attachments.updated_at`
-  ).bind(a.id, a.noteId, a.mime, a.size, a.createdAt, a.updatedAt, a.deleted, Date.now()).run();
+  // 旧クライアント対策: nameフィールド自体が無い場合はnameを現状維持する（foldersのorder_keyと同じパターン）
+  const hasName = "name" in a;
+  if (hasName) {
+    await db.prepare(
+      `INSERT INTO attachments (id, note_id, mime, size, created_at, updated_at, deleted, received_at, name)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+       ON CONFLICT(id) DO UPDATE SET
+         mime = excluded.mime, size = excluded.size,
+         updated_at = excluded.updated_at, deleted = excluded.deleted, received_at = excluded.received_at,
+         name = excluded.name
+       WHERE excluded.updated_at > attachments.updated_at`
+    ).bind(a.id, a.noteId, a.mime, a.size, a.createdAt, a.updatedAt, a.deleted, Date.now(), a.name ?? null).run();
+  } else {
+    await db.prepare(
+      `INSERT INTO attachments (id, note_id, mime, size, created_at, updated_at, deleted, received_at)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+       ON CONFLICT(id) DO UPDATE SET
+         mime = excluded.mime, size = excluded.size,
+         updated_at = excluded.updated_at, deleted = excluded.deleted, received_at = excluded.received_at
+       WHERE excluded.updated_at > attachments.updated_at`
+    ).bind(a.id, a.noteId, a.mime, a.size, a.createdAt, a.updatedAt, a.deleted, Date.now()).run();
+  }
   return true;
 }
 
@@ -76,7 +90,7 @@ type NoteRow = {
   deleted: 0 | 1; folder_id: string | null; order_key: number | null;
   remind_at: number | null; repeat_rule: string | null;
 };
-type AttRow = { id: string; note_id: string; mime: string; size: number; created_at: number; updated_at: number; deleted: 0 | 1 };
+type AttRow = { id: string; note_id: string; mime: string; size: number; created_at: number; updated_at: number; deleted: 0 | 1; name: string | null };
 type FolderRow = {
   id: string; name: string; parent_id: string | null; created_at: number; updated_at: number;
   deleted: 0 | 1; order_key: number | null;
@@ -186,6 +200,8 @@ export async function handleSync(req: Request, env: Env): Promise<Response> {
     attachments: attRows.results.map((r) => ({
       id: r.id, noteId: r.note_id, mime: r.mime, size: r.size,
       createdAt: r.created_at, updatedAt: r.updated_at, deleted: r.deleted,
+      // NULL（0009以前に作られた行）はフィールドごと省く。クライアントは表示時にフォールバック名を作る
+      ...(r.name === null ? {} : { name: r.name }),
     })),
     folders: [
       ...folderRows.results.map((r) => ({
