@@ -276,10 +276,13 @@ export default function App() {
       if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) return;
       const items = [...(e.clipboardData?.items ?? [])];
       const files = items.filter((i) => i.kind === "file").map((i) => i.getAsFile()).filter((f): f is File => f !== null);
-      const images = files.filter((f) => f.type.startsWith("image/"));
-      if (images.length > 0) {
-        const n = await createNote("");
-        for (const f of images) await addAttachment(n.id, f);
+      if (files.length > 0) {
+        const n = await createNote("", currentFolderId);
+        let rejected = 0;
+        for (const f of files) {
+          if (!(await addAttachment(n.id, f))) rejected += 1;
+        }
+        if (rejected > 0) alert(`${rejected}件は50MBを超えるため添付できませんでした`);
         scheduleSync();
         return;
       }
@@ -291,7 +294,7 @@ export default function App() {
     }
     document.addEventListener("paste", onPaste);
     return () => document.removeEventListener("paste", onPaste);
-  }, [view, scheduleSync]);
+  }, [view, scheduleSync, currentFolderId]);
 
   // "それ以外の遷移"（進み操作）用のsetViewラッパ。navDirectionを"forward"にしてから画面を切り替える
   const goForward = useCallback((v: View) => {

@@ -8,7 +8,7 @@ import { highlightMatches } from "../lib/highlight";
 import { renderMarkdown, toggleCheckbox } from "../lib/markdown";
 import type { Note } from "../lib/types";
 import { AttachmentFiles } from "./AttachmentFiles";
-import { BackIcon, BellIcon, CloseIcon, ImageIcon, RedoIcon, UndoIcon } from "./icons";
+import { BackIcon, BellIcon, ClipIcon, CloseIcon, ImageIcon, RedoIcon, UndoIcon } from "./icons";
 import { ImageOverlay, onImageDragStart } from "./ImageOverlay";
 import { ReminderSheet } from "./ReminderSheet";
 import { useAttachmentUrls } from "./useAttachmentUrls";
@@ -60,6 +60,7 @@ export function NoteScreen({ syncBar, slideClass, note, startEditing, startWithR
   const allFolders = useLiveQuery(listAllFolders, [], []);
   const flatFolders = useMemo(() => flattenFolderTree(allFolders), [allFolders]);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const anyFileInputRef = useRef<HTMLInputElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const viewRef = useRef<HTMLDivElement | null>(null);
   // ジャンプ（scrollIntoView）は初回表示の1回だけ。チェックボックス切替等でhtmlが変わって
@@ -246,11 +247,17 @@ export function NoteScreen({ syncBar, slideClass, note, startEditing, startWithR
     }
   }
 
-  // 選択・ペーストされたファイルのうち画像だけをattachments経由で保存し、保存完了ごとにonAttachedで同期をスケジュールする
+  // 選択・ペースト・ドロップされたファイルを種類を問わず保存し、完了ごとにonAttachedで同期をスケジュールする。
+  // 上限超過分は保存せず、最後にまとめて件数を知らせる
   async function attachFiles(files: Iterable<File>) {
-    const images = [...files].filter((f) => f.type.startsWith("image/"));
-    if (images.length === 0) return;
-    for (const f of images) await addAttachment(note.id, f);
+    const list = [...files];
+    if (list.length === 0) return;
+    let rejected = 0;
+    for (const f of list) {
+      const meta = await addAttachment(note.id, f);
+      if (!meta) rejected += 1;
+    }
+    if (rejected > 0) alert(`${rejected}件は50MBを超えるため添付できませんでした`);
     onAttached?.();
   }
 
@@ -262,7 +269,7 @@ export function NoteScreen({ syncBar, slideClass, note, startEditing, startWithR
 
   function onEditorPaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
     const files = [...(e.clipboardData?.files ?? [])];
-    if (files.some((f) => f.type.startsWith("image/"))) {
+    if (files.length > 0) {
       e.preventDefault();
       void attachFiles(files);
     }
@@ -283,6 +290,9 @@ export function NoteScreen({ syncBar, slideClass, note, startEditing, startWithR
             <button className="icon-btn" aria-label="写真を添付" onClick={() => fileInputRef.current?.click()}>
               <ImageIcon />
             </button>
+            <button className="icon-btn" aria-label="ファイルを添付" onClick={() => anyFileInputRef.current?.click()}>
+              <ClipIcon />
+            </button>
             <button
               className={(note.remindAt ?? null) != null ? "icon-btn accent" : "icon-btn"}
               aria-label="リマインダー"
@@ -294,6 +304,14 @@ export function NoteScreen({ syncBar, slideClass, note, startEditing, startWithR
               ref={fileInputRef}
               type="file"
               accept="image/*"
+              multiple
+              style={{ display: "none" }}
+              onChange={onPickFiles}
+            />
+            {/* accept無し＝PDF・Excel等どれでも。iOSでは「写真」「ブラウズ」の選択が出る */}
+            <input
+              ref={anyFileInputRef}
+              type="file"
               multiple
               style={{ display: "none" }}
               onChange={onPickFiles}
