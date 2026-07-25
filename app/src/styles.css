@@ -36,6 +36,7 @@
 .acc-blue   { --acc: var(--c-blue);   --acc-tint: var(--t-blue); }
 .acc-violet { --acc: var(--c-violet); --acc-tint: var(--t-violet); }
 .acc-pink   { --acc: var(--c-pink);   --acc-tint: var(--t-pink); }
+.acc-indigo { --acc: var(--indigo); --acc-tint: var(--t-blue); }
 
 /* ==================== ベース ==================== */
 * { box-sizing: border-box; }
