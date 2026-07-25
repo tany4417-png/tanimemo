@@ -2,8 +2,10 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { db, resetDbForTests } from "./db";
 import {
   addAttachment,
+  addAttachments,
   getImageBlob,
   MAX_ATTACHMENT_BYTES,
+  rejectedMessage,
   restoreAttachment,
   softDeleteAttachment,
   thumbKey,
@@ -68,6 +70,38 @@ describe("addAttachment", () => {
     const big = { size: MAX_ATTACHMENT_BYTES + 1, type: "application/pdf", name: "big.pdf" } as unknown as File;
     expect(await addAttachment("N", big)).toBeNull();
     expect(await db.attachments.count()).toBe(0);
+  });
+});
+
+describe("addAttachments", () => {
+  it("複数ファイルがすべて保存される", async () => {
+    const files = [
+      new File([new Uint8Array([1])], "a.pdf", { type: "application/pdf" }),
+      new File([new Uint8Array([2])], "b.png", { type: "image/png" }),
+    ];
+    const rejected = await addAttachments("N", files);
+    expect(rejected).toBe(0);
+    expect(await db.attachments.where("noteId").equals("N").count()).toBe(2);
+  });
+
+  it("上限超過分だけ保存されず、件数を返す", async () => {
+    const big = { size: MAX_ATTACHMENT_BYTES + 1, type: "application/pdf", name: "big.pdf" } as unknown as File;
+    const ok = new File([new Uint8Array([1])], "a.pdf", { type: "application/pdf" });
+    const rejected = await addAttachments("N", [big, ok, big]);
+    expect(rejected).toBe(2);
+    expect(await db.attachments.where("noteId").equals("N").count()).toBe(1);
+  });
+
+  it("空配列なら何も保存せずrejectedは0", async () => {
+    const rejected = await addAttachments("N", []);
+    expect(rejected).toBe(0);
+    expect(await db.attachments.count()).toBe(0);
+  });
+});
+
+describe("rejectedMessage", () => {
+  it("件数を埋め込んだ上限超過メッセージを返す", () => {
+    expect(rejectedMessage(3)).toBe("3件は50MBを超えるため添付できませんでした");
   });
 });
 

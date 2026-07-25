@@ -7,7 +7,7 @@ import { Settings } from "./components/Settings";
 import { SyncStatus } from "./components/SyncStatus";
 import { TrashScreen } from "./components/TrashScreen";
 import { popRedo, popUndo, pushAction, type ActionStacks } from "./lib/actions";
-import { addAttachment, restoreAttachment, softDeleteAttachment } from "./lib/attachments";
+import { addAttachments, rejectedMessage, restoreAttachment, softDeleteAttachment } from "./lib/attachments";
 import { db } from "./lib/db";
 import { exportZip, localYmd } from "./lib/export";
 import { ensurePushSubscription, isPushEnabled } from "./lib/push";
@@ -278,11 +278,8 @@ export default function App() {
       const files = items.filter((i) => i.kind === "file").map((i) => i.getAsFile()).filter((f): f is File => f !== null);
       if (files.length > 0) {
         const n = await createNote("", currentFolderId);
-        let rejected = 0;
-        for (const f of files) {
-          if (!(await addAttachment(n.id, f))) rejected += 1;
-        }
-        if (rejected > 0) alert(`${rejected}件は50MBを超えるため添付できませんでした`);
+        const rejected = await addAttachments(n.id, files);
+        if (rejected > 0) alert(rejectedMessage(rejected));
         scheduleSync();
         return;
       }

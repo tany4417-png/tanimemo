@@ -73,6 +73,22 @@ export async function addAttachment(noteId: string, file: File | Blob): Promise<
   return meta;
 }
 
+// 複数ファイルをまとめて添付し、上限超過で保存できなかった件数を返す。
+// 呼び出し側は件数をまとめて知らせる（1件ずつalertを出さないため）
+export async function addAttachments(noteId: string, files: Iterable<File>): Promise<number> {
+  let rejected = 0;
+  for (const f of files) {
+    const meta = await addAttachment(noteId, f);
+    if (!meta) rejected += 1;
+  }
+  return rejected;
+}
+
+// 上限超過を知らせる文言。メモ画面・一覧ペースト・ドロップの3経路で同じ文言を出すため一本化する
+export function rejectedMessage(rejected: number): string {
+  return `${rejected}件は50MBを超えるため添付できませんでした`;
+}
+
 // 添付1枚の個別削除（2026-07-21 オーナー要望）。メモ本体と同じtombstone方式で、deleted=1が
 // 同期で他端末へ伝わり、30日の期限purgeでD1・R2実体ごと消える。取り消しはrestoreAttachmentで行う
 export async function softDeleteAttachment(id: string): Promise<void> {

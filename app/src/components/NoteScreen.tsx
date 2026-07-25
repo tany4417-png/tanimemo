@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
-import { addAttachment } from "../lib/attachments";
+import { addAttachments, rejectedMessage } from "../lib/attachments";
 import { accentClassFor } from "../lib/colors";
 import { flattenFolderTree, listAllFolders } from "../lib/folders";
 import { canRedo, canUndo, histInit, histPush, histRedo, histUndo, type Hist } from "../lib/history";
@@ -252,12 +252,8 @@ export function NoteScreen({ syncBar, slideClass, note, startEditing, startWithR
   async function attachFiles(files: Iterable<File>) {
     const list = [...files];
     if (list.length === 0) return;
-    let rejected = 0;
-    for (const f of list) {
-      const meta = await addAttachment(note.id, f);
-      if (!meta) rejected += 1;
-    }
-    if (rejected > 0) alert(`${rejected}件は50MBを超えるため添付できませんでした`);
+    const rejected = await addAttachments(note.id, list);
+    if (rejected > 0) alert(rejectedMessage(rejected));
     onAttached?.();
   }
 
