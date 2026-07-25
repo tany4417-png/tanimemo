@@ -407,10 +407,10 @@ export function Gallery({
   onDeleteAttachment?: (attId: string) => void;
 }) {
   // 一覧グリッドは軽いサムネイル、原寸オーバーレイだけ本体blobを使う（一覧・起動を重くしないため）
-  const { metas, urls } = useAttachmentUrls(noteId, undefined, { thumb: true });
+  const { metas, urls } = useAttachmentUrls(noteId, undefined, { thumb: true, kind: "image" });
   // OSへのドラッグアウト用に、原寸blobのobjectURLも別途用意する（サムネのままだと画質が粗いため）。
   // 未取得（オフライン等でfetchが失敗した添付）はurlsに入らず、その添付はドラッグアウト無効のまま表示される
-  const { urls: fullUrls } = useAttachmentUrls(noteId, undefined, { thumb: false });
+  const { urls: fullUrls } = useAttachmentUrls(noteId, undefined, { thumb: false, kind: "image" });
   const [fullId, setFullId] = useState<string | null>(null);
 
   return (

@@ -1,21 +1,24 @@
 import { useEffect, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { getImageBlob } from "../lib/attachments";
+import { isImageMime } from "../lib/attachment-view";
 import { db } from "../lib/db";
 import type { AttachmentMeta } from "../lib/types";
 
 export function useAttachmentUrls(
   noteId: string,
   limit?: number,
-  opts?: { thumb?: boolean }
+  opts?: { thumb?: boolean; kind?: "image" | "file" | "all" }
 ): { metas: AttachmentMeta[]; urls: Record<string, string> } {
   const thumb = opts?.thumb ?? false;
+  const kind = opts?.kind ?? "all";
   const metas = useLiveQuery(
     async () => {
       const all = await db.attachments.where("noteId").equals(noteId).filter((a) => a.deleted === 0).toArray();
-      return limit ? all.slice(0, limit) : all;
+      const picked = kind === "all" ? all : all.filter((a) => (kind === "image") === isImageMime(a.mime));
+      return limit ? picked.slice(0, limit) : picked;
     },
-    [noteId, limit],
+    [noteId, limit, kind],
     [] as AttachmentMeta[]
   );
   const [urls, setUrls] = useState<Record<string, string>>({});
