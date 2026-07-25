@@ -11,6 +11,7 @@ import {
   listAllFolders,
   listChildFolders,
   listNotesIn,
+  listNotesUnder,
   listTrashedFolders,
   moveFolder,
   moveNote,
@@ -100,6 +101,53 @@ describe("listNotesIn", () => {
     const rootNotes = await listNotesIn(null);
     expect(rootNotes.find((n) => n.id === n2.id)).toBeDefined();
     expect(rootNotes.find((n) => n.id === n1.id)).toBeUndefined();
+  });
+});
+
+describe("listNotesUnder", () => {
+  it("直下と子孫フォルダのメモをまとめて返す", async () => {
+    const parent = await createFolder("親", null);
+    const child = await createFolder("子", parent.id);
+    const grandchild = await createFolder("孫", child.id);
+    const direct = await createNote("直下", parent.id);
+    const inChild = await createNote("子の中", child.id);
+    const inGrandchild = await createNote("孫の中", grandchild.id);
+
+    const notes = await listNotesUnder(parent.id);
+    expect(notes.map((n) => n.id).sort()).toEqual([direct.id, inChild.id, inGrandchild.id].sort());
+  });
+
+  it("削除済みのメモと、別ツリー・ルートのメモは数えない", async () => {
+    const parent = await createFolder("親", null);
+    const child = await createFolder("子", parent.id);
+    const other = await createFolder("別ツリー", null);
+    const alive = await createNote("生きてる", child.id);
+    const trashed = await createNote("ゴミ箱", child.id);
+    await db.notes.update(trashed.id, { deleted: 1 });
+    await createNote("別ツリーの中", other.id);
+    await createNote("ルート直下");
+
+    const notes = await listNotesUnder(parent.id);
+    expect(notes.map((n) => n.id)).toEqual([alive.id]);
+  });
+
+  it("削除済みフォルダの中のメモは数えない", async () => {
+    const parent = await createFolder("親", null);
+    const child = await createFolder("子", parent.id);
+    await createNote("消えた子の中", child.id);
+    await db.folders.update(child.id, { deleted: 1 });
+
+    expect(await listNotesUnder(parent.id)).toEqual([]);
+  });
+
+  it("親子が循環していても止まる（データ破損時の防御）", async () => {
+    const a = await createFolder("A", null);
+    const b = await createFolder("B", a.id);
+    await db.folders.update(a.id, { parentId: b.id });
+    const n = await createNote("Bの中", b.id);
+
+    const notes = await listNotesUnder(a.id);
+    expect(notes.map((n2) => n2.id)).toEqual([n.id]);
   });
 });
 

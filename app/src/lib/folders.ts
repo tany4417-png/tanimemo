@@ -56,6 +56,25 @@ export async function listNotesIn(folderId: string | null): Promise<Note[]> {
   return all.filter((n) => n.deleted === 0 && n.folderId === folderId);
 }
 
+// フォルダとその子孫すべてに入っている未削除メモを返す（カードの件数表示用）。
+// 削除済みフォルダは辿らない。循環参照（データ破損時の防御）は訪問済みidで打ち切る。
+export async function listNotesUnder(folderId: string): Promise<Note[]> {
+  const alive = (await db.folders.toArray()).filter((f) => f.deleted === 0);
+  const ids = new Set<string>([folderId]);
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (const f of alive) {
+      if (f.parentId !== null && ids.has(f.parentId) && !ids.has(f.id)) {
+        ids.add(f.id);
+        grew = true;
+      }
+    }
+  }
+  const all = await db.notes.toArray();
+  return all.filter((n) => n.deleted === 0 && n.folderId !== null && ids.has(n.folderId));
+}
+
 // ルート→自分の順の祖先列を返す。循環・親の欠損に遭遇したらそこで打ち切る。
 export async function folderPath(id: string | null): Promise<Folder[]> {
   if (id === null) return [];

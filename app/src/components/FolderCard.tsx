@@ -1,6 +1,6 @@
 import { useLiveQuery } from "dexie-react-hooks";
 import { accentClassFor } from "../lib/colors";
-import { listNotesIn } from "../lib/folders";
+import { listNotesUnder } from "../lib/folders";
 import { excludeReminders } from "../lib/sort";
 import type { Folder } from "../lib/types";
 import { FolderIcon } from "./icons";
@@ -27,8 +27,9 @@ export function FolderCard({
   onMoveFolder: (id: string, parentId: string | null) => void;
   onReorder: ReorderHandler;
 }) {
-  // 件数は開いたときに見えるメモ数に合わせる（リマインダー付きは置き場に出さないため数えない）
-  const count = useLiveQuery(async () => excludeReminders(await listNotesIn(folder.id)).length, [folder.id], 0);
+  // 件数はサブフォルダの中まで数える（直下にメモが無くサブフォルダだけのフォルダが0件に見えるため）。
+  // リマインダー付きは置き場に出さないので数えない
+  const count = useLiveQuery(async () => excludeReminders(await listNotesUnder(folder.id)).length, [folder.id], 0);
   return (
     <SwipeableCard
       isOpen={isOpen}
