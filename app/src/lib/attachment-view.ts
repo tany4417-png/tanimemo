@@ -12,11 +12,15 @@ export function fallbackName(mime: string, createdAt: number): string {
   return `${isImageMime(mime) ? "画像" : "ファイル"}-${stamp}.${mimeToExt(mime)}`;
 }
 
+// ファイル名から拡張子を取り出す（大文字小文字は変えない）。取れなければ空文字
+export function extFromName(name: string | undefined): string {
+  const dot = name ? name.lastIndexOf(".") : -1;
+  return dot > 0 && name && dot < name.length - 1 ? name.slice(dot + 1) : "";
+}
+
 // 行頭に出す拡張子ラベル。ファイル名の拡張子を優先し、無ければmimeから引く
 export function extLabel(name: string | undefined, mime: string): string {
-  const dot = name ? name.lastIndexOf(".") : -1;
-  const fromName = dot > 0 && dot < (name as string).length - 1 ? (name as string).slice(dot + 1) : "";
-  return (fromName || mimeToExt(mime)).slice(0, 4).toUpperCase();
+  return (extFromName(name) || mimeToExt(mime)).slice(0, 4).toUpperCase();
 }
 
 export function formatSize(bytes: number): string {

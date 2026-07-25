@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { extLabel, fallbackName, formatSize, isImageMime } from "./attachment-view";
+import { extFromName, extLabel, fallbackName, formatSize, isImageMime } from "./attachment-view";
 
 describe("isImageMime", () => {
   it("image/*だけ真", () => {
@@ -18,6 +18,25 @@ describe("fallbackName", () => {
   it("非画像は「ファイル-日時.拡張子」で、未知mimeはbin", () => {
     const at = new Date(2026, 6, 26, 9, 5).getTime();
     expect(fallbackName("application/pdf", at)).toBe("ファイル-20260726-0905.bin");
+  });
+});
+
+describe("extFromName", () => {
+  it("ファイル名の拡張子を大文字小文字を変えずに返す", () => {
+    expect(extFromName("見積書.pdf")).toBe("pdf");
+    expect(extFromName("a.PDF")).toBe("PDF");
+  });
+  it("拡張子が無ければ空文字", () => {
+    expect(extFromName("README")).toBe("");
+  });
+  it("末尾がドットなら空文字", () => {
+    expect(extFromName("a.")).toBe("");
+  });
+  it("先頭のドットのみ（隠しファイル）なら空文字", () => {
+    expect(extFromName(".gitignore")).toBe("");
+  });
+  it("nameが無ければ空文字", () => {
+    expect(extFromName(undefined)).toBe("");
   });
 });
 
