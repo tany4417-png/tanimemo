@@ -1,4 +1,5 @@
 import { strToU8, zipSync } from "fflate";
+import { isImageMime } from "./attachment-view";
 import { getImageBlob } from "./attachments";
 import { db } from "./db";
 import { folderPath } from "./folders";
@@ -52,7 +53,12 @@ export async function exportZip(
     let blob = rec?.blob ?? null;
     if (!blob && token) blob = await getImageBlob(a.id, token, fetchFn);
     if (blob) {
-      files[`images/${a.id}.${mimeToExt(a.mime)}`] = new Uint8Array(await blob.arrayBuffer());
+      // 拡張子はファイル名を優先（mimeToExtは画像しか知らないため、PDF等が.binになるのを避ける）
+      const dot = a.name ? a.name.lastIndexOf(".") : -1;
+      const fromName = dot > 0 && a.name && dot < a.name.length - 1 ? a.name.slice(dot + 1) : "";
+      const ext = fromName || mimeToExt(a.mime);
+      const dir = isImageMime(a.mime) ? "images" : "files";
+      files[`${dir}/${a.id}.${ext}`] = new Uint8Array(await blob.arrayBuffer());
     } else {
       missingImages += 1;
     }

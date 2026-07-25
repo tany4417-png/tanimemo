@@ -79,6 +79,21 @@ describe("exportZip", () => {
     expect(keys.some((k) => k.includes("thumb"))).toBe(false);
   });
 
+  it("非画像の添付はfiles/配下に元の拡張子で出る", async () => {
+    await db.notes.add({
+      id: "N1", body: "本文", importance: 0, createdAt: 1, updatedAt: 1, deleted: 0, dirty: 0,
+      folderId: null, orderKey: null, remindAt: null, repeatRule: null,
+    });
+    await db.attachments.add({
+      id: "A1", noteId: "N1", mime: "application/pdf", size: 1, name: "見積書.pdf",
+      createdAt: 1, updatedAt: 1, deleted: 0, dirty: 0,
+    });
+    await db.attachmentBlobs.add({ id: "A1", blob: new Blob([new Uint8Array([1])], { type: "application/pdf" }) });
+    const { blob } = await exportZip();
+    const names = Object.keys(unzipSync(new Uint8Array(await blob.arrayBuffer())));
+    expect(names).toContain("files/A1.pdf");
+  });
+
   it("フォルダ配下のメモはfolder行にフォルダパスが書き出される", async () => {
     const root = await createFolder("仕事", null);
     const child = await createFolder("2026", root.id);
