@@ -94,4 +94,72 @@ describe("/api/share", () => {
     const note = data.notes.find((n: any) => n.id === noteId);
     expect(note.body).toBe("a\n- [ ] x");
   });
+
+  // ショートカットを1つにまとめる（受け取る内容にURL・テキスト・ファイルを全部入れる）と、
+  // URLやテキストもfileフィールドにファイル化されて届く。それを添付にせず本文に回す
+  it("fileとして届いた小さなテキストは添付ではなく本文になる", async () => {
+    const form = new FormData();
+    form.append("file", new File(["https://example.com/doc"], "url.txt", { type: "text/plain" }));
+    const res = await SELF.fetch("https://example.com/api/share", { method: "POST", headers: TOKEN, body: form });
+    expect(res.status).toBe(200);
+    const { noteId } = (await res.json()) as any;
+    const data = await pull();
+    expect(data.notes.find((n: any) => n.id === noteId).body).toBe("https://example.com/doc");
+    expect(data.attachments.filter((a: any) => a.noteId === noteId)).toHaveLength(0);
+  });
+
+  it("typeが空のまま届いた小さなテキストも本文になる（iOSはtypeを付けないことがある）", async () => {
+    const form = new FormData();
+    form.append("file", new File(["メモの中身"], "input"));
+    const res = await SELF.fetch("https://example.com/api/share", { method: "POST", headers: TOKEN, body: form });
+    const { noteId } = (await res.json()) as any;
+    const data = await pull();
+    expect(data.notes.find((n: any) => n.id === noteId).body).toBe("メモの中身");
+    expect(data.attachments.filter((a: any) => a.noteId === noteId)).toHaveLength(0);
+  });
+
+  it("PDFなどのバイナリは今までどおり添付になる", async () => {
+    const form = new FormData();
+    form.append("file", new File([new Uint8Array([0x25, 0x50, 0x44, 0x46])], "見積書.pdf", { type: "application/pdf" }));
+    const res = await SELF.fetch("https://example.com/api/share", { method: "POST", headers: TOKEN, body: form });
+    const { noteId } = (await res.json()) as any;
+    const data = await pull();
+    expect(data.notes.find((n: any) => n.id === noteId).body).toBe("");
+    const atts = data.attachments.filter((a: any) => a.noteId === noteId);
+    expect(atts).toHaveLength(1);
+    expect(atts[0].name).toBe("見積書.pdf");
+  });
+
+  it("typeが空でも中身がバイナリなら添付として扱う", async () => {
+    const form = new FormData();
+    // 先頭にNULを含む＝テキストとして扱ってはいけない
+    const bytes = new Uint8Array([0x00, 0x01, 0x02, 0x41, 0x42]);
+    form.append("file", new File([bytes], "data.bin"));
+    const res = await SELF.fetch("https://example.com/api/share", { method: "POST", headers: TOKEN, body: form });
+    const { noteId } = (await res.json()) as any;
+    const data = await pull();
+    expect(data.notes.find((n: any) => n.id === noteId).body).toBe("");
+    expect(data.attachments.filter((a: any) => a.noteId === noteId)).toHaveLength(1);
+  });
+
+  it("大きなテキストファイルは本文にせず添付のまま", async () => {
+    const form = new FormData();
+    form.append("file", new File(["あ".repeat(3000)], "long.txt", { type: "text/plain" }));
+    const res = await SELF.fetch("https://example.com/api/share", { method: "POST", headers: TOKEN, body: form });
+    const { noteId } = (await res.json()) as any;
+    const data = await pull();
+    expect(data.notes.find((n: any) => n.id === noteId).body).toBe("");
+    expect(data.attachments.filter((a: any) => a.noteId === noteId)).toHaveLength(1);
+  });
+
+  it("テキストとファイルが同時に届いたら本文と添付の両方になる", async () => {
+    const form = new FormData();
+    form.append("text", "コメント");
+    form.append("file", new File([new Uint8Array([0x25, 0x50])], "a.pdf", { type: "application/pdf" }));
+    const res = await SELF.fetch("https://example.com/api/share", { method: "POST", headers: TOKEN, body: form });
+    const { noteId } = (await res.json()) as any;
+    const data = await pull();
+    expect(data.notes.find((n: any) => n.id === noteId).body).toBe("コメント");
+    expect(data.attachments.filter((a: any) => a.noteId === noteId)).toHaveLength(1);
+  });
 });
