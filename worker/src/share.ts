@@ -53,21 +53,40 @@ export async function handleShare(req: Request, env: Env): Promise<Response> {
   const contentLength = Number(req.headers.get("Content-Length") ?? "0");
   if (contentLength > MAX_SHARE_REQUEST_BYTES) return new Response("too large", { status: 413 });
   const form = await req.formData();
+  // 一時的な診断ログ（2026-07-26 iOSショートカットから届かない件の切り分け用）。
+  // キー名と型・サイズだけを出す。中身は出さない
+  console.log(
+    "share:",
+    JSON.stringify(
+      [...form.entries()].map(([k, v]) =>
+        v instanceof File ? `${k}=File(type=${v.type || "none"},size=${v.size},name=${v.name || "none"})` : `${k}=string(${String(v).length}chars)`
+      )
+    )
+  );
   const text = form.get("text");
   const files = form.getAll("file").filter((f): f is File => f instanceof File);
 
   const bodyParts: string[] = [];
+  const attachments: File[] = [];
   if (typeof text === "string" && text.trim() !== "") {
     bodyParts.push(text.trim());
-  } else if (text instanceof File && mayBeSharedText(text)) {
+  } else if (text instanceof File) {
     // iOSショートカットのフォームフィールドは「テキスト」と「ファイル」の2種類があり、
     // どちらを選んでいるかが画面から分かりにくい。textキーにファイルとして届いても本文として読む
     // （2026-07-26 オーナーがUI上で種類を切り替えられなかったため、サーバー側で吸収する）
-    const s = (await text.text()).trim();
-    if (s !== "" && !hasControlChars(s)) bodyParts.push(s);
+    let consumed = false;
+    if (mayBeSharedText(text)) {
+      const s = (await text.text()).trim();
+      if (s !== "" && !hasControlChars(s)) {
+        bodyParts.push(s);
+        consumed = true;
+      }
+    }
+    // 本文にできない中身（大きい・バイナリ）でも捨てない。fileキー側と同じく添付に回す。
+    // 以前はここで行き場を失い、textキーだけが丸ごと消えて400になっていた（2026-07-26 レビュー指摘）
+    if (!consumed) attachments.push(text);
   }
   // fileとして届いた小さなテキスト（＝URL共有をファイル用ショートカットで受けた場合）は本文に回す
-  const attachments: File[] = [];
   for (const f of files) {
     if (mayBeSharedText(f)) {
       const s = (await f.text()).trim();

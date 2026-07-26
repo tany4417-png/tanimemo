@@ -165,11 +165,28 @@ describe("/api/share", () => {
     expect(data.attachments.filter((a: any) => a.noteId === noteId)).toHaveLength(0);
   });
 
-  it("textキーに大きなファイルが来た場合は本文にしない（取り違え防止）", async () => {
+  // 本文にできない中身でも捨てない（以前はtextキーだけ行き場を失って400になっていた）
+  it("textキーに大きなファイルが来たら本文にせず添付に回す", async () => {
     const form = new FormData();
     form.append("text", new File(["あ".repeat(3000)], "long.txt", { type: "text/plain" }));
     const res = await SELF.fetch("https://example.com/api/share", { method: "POST", headers: TOKEN, body: form });
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(200);
+    const { noteId } = (await res.json()) as any;
+    const data = await pull();
+    expect(data.notes.find((n: any) => n.id === noteId).body).toBe("");
+    const atts = data.attachments.filter((a: any) => a.noteId === noteId);
+    expect(atts).toHaveLength(1);
+    expect(atts[0].name).toBe("long.txt");
+  });
+
+  it("textキーにバイナリが来ても捨てずに添付に回す", async () => {
+    const form = new FormData();
+    form.append("text", new File([new Uint8Array([0x00, 0x01, 0x02])], "data.bin"));
+    const res = await SELF.fetch("https://example.com/api/share", { method: "POST", headers: TOKEN, body: form });
+    expect(res.status).toBe(200);
+    const { noteId } = (await res.json()) as any;
+    const data = await pull();
+    expect(data.attachments.filter((a: any) => a.noteId === noteId)).toHaveLength(1);
   });
 
   it("テキストとファイルが同時に届いたら本文と添付の両方になる", async () => {
