@@ -156,6 +156,8 @@ button.danger { background: var(--vermilion); border-color: var(--vermilion); co
 .card:active { transform: translateY(1px); box-shadow: var(--shadow-1); }
 .card-title { font-size: 16px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .card-stars { color: var(--star); margin-right: 4px; }
+/* 本文が空のメモでタイトル代わりに出す添付ファイル名。2件目以降の件数は控えめに */
+.card-file-more { color: var(--ink-soft); font-weight: 400; font-size: 13px; }
 .card-sub { font-size: 12px; color: var(--ink-soft); margin-top: 2px; font-variant-numeric: tabular-nums; }
 /* 検索中カードの該当箇所抜粋。1行に切り詰める */
 .card-snippet {

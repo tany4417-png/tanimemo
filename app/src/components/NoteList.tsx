@@ -9,6 +9,7 @@ import { planReorder, type ReorderPlan } from "../lib/reorder";
 import type { SortMode } from "../lib/sort";
 import type { Folder, Note } from "../lib/types";
 import { Breadcrumb } from "./Breadcrumb";
+import { CardFileTitle } from "./CardFileTitle";
 import { CardThumbs } from "./CardThumbs";
 import { FolderCard } from "./FolderCard";
 import { BackIcon, CloseIcon } from "./icons";
@@ -202,7 +203,10 @@ export function NoteList(p: Props) {
                       <a className="card-link" href={url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}>
                         {url}
                       </a>
-                    ) : n.body.trim() === "" ? null : (
+                    ) : n.body.trim() === "" ? (
+                      // 本文が空のメモは、貼ってあるファイル名をタイトルの代わりに出す（無ければ何も出ない）
+                      <CardFileTitle noteId={n.id} />
+                    ) : (
                       firstLineTitle(n.body)
                     );
                   })()}
