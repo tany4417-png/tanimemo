@@ -2,9 +2,13 @@ import { useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "../lib/db";
 import { deriveReminderInfo } from "../lib/reminder-label";
+import { CalendarView } from "./CalendarView";
 import { CardThumbs } from "./CardThumbs";
 import { BackIcon } from "./icons";
 import { SwipeableCard } from "./SwipeableCard";
+
+// 選んだ表示（一覧/暦）を覚えるlocalStorageキー
+const VIEW_KEY = "tanimemo.reminderView";
 
 type Props = {
   syncBar: React.ReactNode;
@@ -16,14 +20,24 @@ type Props = {
   onCreate: () => void;
   // 行のスワイプ削除（メモのゴミ箱行き）。App側でundo登録まで面倒を見る（NoteListと同じ経路）
   onDelete: (id: string) => void;
+  // 暦で日付から作るときに呼ぶ。引数は選択日の9:00（JST）のepoch ms
+  onCreateAt: (atMs: number) => void;
 };
 
 // リマインダー一覧。deleted=0かつremindAt!=nullのメモを次回発火時刻の昇順で表示する。
 // 発火済み（単発の24時間超過）は末尾へ回し、行に"fired"クラスを付けて減光する。
 // 行はNoteListと同じSwipeableCard（タップで開く・スワイプで削除・未読は赤点）
-export function RemindersScreen({ syncBar, slideClass, onOpenNote, onBack, onCreate, onDelete }: Props) {
+export function RemindersScreen({ syncBar, slideClass, onOpenNote, onBack, onCreate, onDelete, onCreateAt }: Props) {
   // スワイプで削除ボタンが開いている行のid（NoteListと同じcontrolledパターン・開けるのは同時に1枚だけ）
   const [openId, setOpenId] = useState<string | null>(null);
+  // 表示モード（一覧/暦）。選択はlocalStorageに残し、次回開いたときも同じ表示から始める
+  const [mode, setMode] = useState<"list" | "calendar">(
+    () => (localStorage.getItem(VIEW_KEY) === "calendar" ? "calendar" : "list")
+  );
+  function switchMode(next: "list" | "calendar") {
+    setMode(next);
+    localStorage.setItem(VIEW_KEY, next);
+  }
   // 通知未読のメモid集合。行の赤点表示用（NoteListのカード赤点と同じ見た目）
   const unreadIds = useLiveQuery(
     async () => new Set((await db.unread.toArray()).map((u) => u.noteId)),
@@ -57,34 +71,45 @@ export function RemindersScreen({ syncBar, slideClass, onOpenNote, onBack, onCre
             <BackIcon />
           </button>
           <h2>リマインダー</h2>
+          <span className="spacer" />
+          <span className="seg">
+            <button className={mode === "list" ? "on" : undefined} onClick={() => switchMode("list")}>一覧</button>
+            <button className={mode === "calendar" ? "on" : undefined} onClick={() => switchMode("calendar")}>暦</button>
+          </span>
           <button className="primary" onClick={onCreate}>新規</button>
         </div>
       </div>
       <div className="screen-body">
         <div className="bounce-area">
-          {rows.length === 0 && <p className="empty">通知を設定したメモはありません</p>}
-          {rows.map((r) => (
-            <SwipeableCard
-              key={r.id}
-              isOpen={openId === r.id}
-              onOpenChange={(open) => setOpenId(open ? r.id : null)}
-              onCloseOthers={() => setOpenId((cur) => (cur === r.id ? cur : null))}
-              onDelete={() => {
-                onDelete(r.id);
-                setOpenId((cur) => (cur === r.id ? null : cur));
-              }}
-              onOpen={() => onOpenNote(r.id)}
-              className={r.fired ? "reminder-row fired" : "reminder-row"}
-            >
-              <div className="reminder-row-main">
-                {unreadIds.has(r.id) && <span className="unread-dot" aria-label="未読の通知" />}
-                <span className="reminder-title">{r.title}</span>
-                <span className="reminder-when">{r.label}</span>
-              </div>
-              {/* 画像のみのメモでも中身がわかるよう、NoteListのカードと同じサムネイルを出す */}
-              <CardThumbs noteId={r.id} />
-            </SwipeableCard>
-          ))}
+          {mode === "calendar" ? (
+            <CalendarView onOpenNote={onOpenNote} onCreateAt={onCreateAt} />
+          ) : (
+            <>
+              {rows.length === 0 && <p className="empty">通知を設定したメモはありません</p>}
+              {rows.map((r) => (
+                <SwipeableCard
+                  key={r.id}
+                  isOpen={openId === r.id}
+                  onOpenChange={(open) => setOpenId(open ? r.id : null)}
+                  onCloseOthers={() => setOpenId((cur) => (cur === r.id ? cur : null))}
+                  onDelete={() => {
+                    onDelete(r.id);
+                    setOpenId((cur) => (cur === r.id ? null : cur));
+                  }}
+                  onOpen={() => onOpenNote(r.id)}
+                  className={r.fired ? "reminder-row fired" : "reminder-row"}
+                >
+                  <div className="reminder-row-main">
+                    {unreadIds.has(r.id) && <span className="unread-dot" aria-label="未読の通知" />}
+                    <span className="reminder-title">{r.title}</span>
+                    <span className="reminder-when">{r.label}</span>
+                  </div>
+                  {/* 画像のみのメモでも中身がわかるよう、NoteListのカードと同じサムネイルを出す */}
+                  <CardThumbs noteId={r.id} />
+                </SwipeableCard>
+              ))}
+            </>
+          )}
         </div>
       </div>
     </div>

@@ -233,6 +233,10 @@ mark.search-hit { background: #ffe08a; color: inherit; border-radius: 2px; paddi
 }
 /* リマインダー一覧の見出しを伸ばし、「新規」ボタンを右端へ寄せる */
 .reminders .toolbar h2 { flex: 1; }
+/* リマインダー画面の一覧／暦切替（セグメントコントロール） */
+.seg { display: inline-flex; border: 1px solid var(--rule); border-radius: 8px; overflow: hidden; }
+.seg button { border: 0; background: var(--card); color: var(--ink-soft); font-size: 12px; padding: 4px 10px; }
+.seg button.on { background: var(--indigo); color: #FFF; }
 /* 未読メモカードの赤点（タイトル先頭） */
 .unread-dot {
   flex: none; display: inline-block; width: 8px; height: 8px; border-radius: 50%;

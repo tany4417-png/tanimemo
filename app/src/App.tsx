@@ -950,6 +950,14 @@ export default function App() {
             setSuppressSlideIn(true);
             setView({ name: "note", id: n.id, isNew: true, withReminder: true });
           }}
+          onCreateAt={async (atMs) => {
+            // カレンダーの日付から作る通知付きメモ。選んだ日の9:00を入れた状態でシートを開く
+            const n = await createNote("", null);
+            await updateNote(n.id, { remindAt: atMs, repeatRule: null });
+            setNavDirection("forward");
+            setSuppressSlideIn(true);
+            setView({ name: "note", id: n.id, isNew: true, withReminder: true });
+          }}
         />
       )}
     </main>
