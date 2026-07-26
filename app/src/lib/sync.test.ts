@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { addImageFromBlob, softDeleteAttachment } from "./attachments";
+import { addAttachment, softDeleteAttachment } from "./attachments";
 import { db, resetDbForTests } from "./db";
 import { createFolder } from "./folders";
 import { createNote, updateNote } from "./notes";
@@ -24,7 +24,7 @@ describe("runSync", () => {
     // PUTを再送すると、サーバー側でメタ行が「生存・現在時刻」で上書きされ、同じ同期でpushする
     // 削除tombstoneがLWWで負けて削除済み添付が復活する（2026-07-21 実バグの回帰テスト）
     await db.meta.put({ key: "fullResyncV4", value: 1 });
-    const meta = await addImageFromBlob("N1", new Blob([new Uint8Array([1])], { type: "image/png" }));
+    const meta = (await addAttachment("N1", new Blob([new Uint8Array([1])], { type: "image/png" })))!;
     await softDeleteAttachment(meta.id);
     const { f, calls } = okFetch();
     await runSync("tok", f);
@@ -208,6 +208,46 @@ describe("runSync", () => {
   });
 });
 
+describe("runSync 添付のpull適用はマージ（2026-07-26 実バグ）", () => {
+  it("サーバーがnameを省いても、ローカルの添付nameは消えない", async () => {
+    await db.attachments.put({
+      id: "ATT1", noteId: "N1", mime: "application/pdf", size: 10, name: "見積書.pdf",
+      createdAt: 100, updatedAt: 100, deleted: 0, dirty: 0,
+    });
+    // サーバーはname===NULLの行をフィールドごと省いて返す（worker/src/sync.ts参照）
+    const incoming = { id: "ATT1", noteId: "N1", mime: "application/pdf", size: 10, createdAt: 100, updatedAt: 200, deleted: 0 as const };
+    const { f } = okFetch({ attachments: [incoming] });
+    await runSync("tok", f);
+    const cur = await db.attachments.get("ATT1");
+    expect(cur?.name).toBe("見積書.pdf");
+    // サーバーが返したフィールドはちゃんと更新される（マージが単なる無視になっていないことの確認）
+    expect(cur?.updatedAt).toBe(200);
+    expect(cur?.size).toBe(10);
+  });
+
+  it("curが無い（新規受信）ときもマージで正しく保存される", async () => {
+    const incoming = { id: "NEW1", noteId: "N1", mime: "image/png", size: 5, name: "写真.png", createdAt: 1, updatedAt: 1, deleted: 0 as const };
+    const { f } = okFetch({ attachments: [incoming] });
+    await runSync("tok", f);
+    const cur = await db.attachments.get("NEW1");
+    expect(cur?.name).toBe("写真.png");
+    expect(cur?.dirty).toBe(0);
+  });
+
+  it("サーバーが必ず送るdeleted/updatedAtはマージでも壊れず反映される", async () => {
+    await db.attachments.put({
+      id: "ATT2", noteId: "N1", mime: "image/png", size: 3, name: "写真.png",
+      createdAt: 100, updatedAt: 100, deleted: 0, dirty: 0,
+    });
+    const incoming = { id: "ATT2", noteId: "N1", mime: "image/png", size: 3, createdAt: 100, updatedAt: 200, deleted: 1 as const };
+    const { f } = okFetch({ attachments: [incoming] });
+    await runSync("tok", f);
+    const cur = await db.attachments.get("ATT2");
+    expect(cur?.deleted).toBe(1);
+    expect(cur?.updatedAt).toBe(200);
+  });
+});
+
 describe("runSync 全量再同期（fullResyncV4）", () => {
   it("旧バージョンからの更新直後（fullResyncV4フラグが無い）はsince=0で送り、成功後にフラグが立つ", async () => {
     const { f, calls } = okFetch();
@@ -247,7 +287,7 @@ describe("runSync 全量再同期（fullResyncV4）", () => {
     await db.notes.update(a.id, { dirty: 0 as const });
     const b = await createFolder("folder-b", null);
     await db.folders.update(b.id, { dirty: 0 as const });
-    const att = await addImageFromBlob(a.id, new Blob([new Uint8Array([1])], { type: "image/png" }));
+    const att = (await addAttachment(a.id, new Blob([new Uint8Array([1])], { type: "image/png" })))!;
     await db.attachments.update(att.id, { dirty: 0 as const });
 
     const { f, calls } = okFetch();
@@ -342,7 +382,7 @@ describe("runSync フォルダ", () => {
 
 describe("runSync 添付アップロード", () => {
   it("dirtyな添付を先にPUTしてからJSON同期する", async () => {
-    await addImageFromBlob("N1", new Blob([new Uint8Array([1])], { type: "image/png" }));
+    await addAttachment("N1", new Blob([new Uint8Array([1])], { type: "image/png" }));
     const { f, calls } = okFetch();
     await runSync("tok", f);
     expect(calls).toHaveLength(2);
@@ -360,8 +400,8 @@ describe("runSync 添付アップロード", () => {
   });
 
   it(":thumbキーのサムネblobはアップロード対象に混ざらない（attachmentsメタが無いため走査されない）", async () => {
-    const meta = await addImageFromBlob("N1", new Blob([new Uint8Array([1])], { type: "image/png" }));
-    // addImageFromBlobが作る:thumbレコードに加え、他経路で紛れ込むケースも想定して明示的にも置いておく
+    const meta = (await addAttachment("N1", new Blob([new Uint8Array([1])], { type: "image/png" })))!;
+    // addAttachmentが作る:thumbレコードに加え、他経路で紛れ込むケースも想定して明示的にも置いておく
     await db.attachmentBlobs.put({ id: `${meta.id}:thumb`, blob: new Blob([new Uint8Array([2])], { type: "image/jpeg" }) });
     const { f, calls } = okFetch();
     await runSync("tok", f);
@@ -389,7 +429,7 @@ describe("runSync 添付アップロード失敗時のスキップ（画像1件�
 
   it("(a) 添付PUTが失敗しても/api/syncは実行され、メモ本文の同期は止まらない", async () => {
     await createNote("body-note"); // dirtyなメモ。添付PUT失敗に巻き込まれず送信されることを確認する
-    await addImageFromBlob("N1", new Blob([new Uint8Array([1])], { type: "image/png" }));
+    await addAttachment("N1", new Blob([new Uint8Array([1])], { type: "image/png" }));
     const { f, calls } = partialFailFetch(() => true);
 
     const result = await runSync("tok", f);
@@ -403,7 +443,7 @@ describe("runSync 添付アップロード失敗時のスキップ（画像1件�
   });
 
   it("(b) 失敗した添付のdirtyは残る（次回リトライ対象のまま）", async () => {
-    const meta = await addImageFromBlob("N1", new Blob([new Uint8Array([1])], { type: "image/png" }));
+    const meta = (await addAttachment("N1", new Blob([new Uint8Array([1])], { type: "image/png" })))!;
     const { f } = partialFailFetch(() => true);
 
     await runSync("tok", f);
@@ -413,8 +453,8 @@ describe("runSync 添付アップロード失敗時のスキップ（画像1件�
   });
 
   it("(c) failedAttachmentsは失敗した添付だけを数え、成功した分は含まない", async () => {
-    const ok = await addImageFromBlob("N1", new Blob([new Uint8Array([1])], { type: "image/png" }));
-    const bad = await addImageFromBlob("N2", new Blob([new Uint8Array([2])], { type: "image/png" }));
+    const ok = (await addAttachment("N1", new Blob([new Uint8Array([1])], { type: "image/png" })))!;
+    const bad = (await addAttachment("N2", new Blob([new Uint8Array([2])], { type: "image/png" })))!;
     const { f } = partialFailFetch((u) => u.includes(bad.id));
 
     const result = await runSync("tok", f);
@@ -425,7 +465,7 @@ describe("runSync 添付アップロード失敗時のスキップ（画像1件�
   });
 
   it("(d) 添付PUTが例外を投げても（ネットワーク断など）握りつぶしてスキップし、failedAttachmentsに数える", async () => {
-    await addImageFromBlob("N1", new Blob([new Uint8Array([1])], { type: "image/png" }));
+    await addAttachment("N1", new Blob([new Uint8Array([1])], { type: "image/png" }));
     const f = (async (url: RequestInfo | URL) => {
       if (String(url).startsWith("/api/attachments/")) throw new Error("network down");
       return new Response(JSON.stringify({ now: 1000, notes: [], attachments: [] }));
@@ -437,7 +477,7 @@ describe("runSync 添付アップロード失敗時のスキップ（画像1件�
   });
 
   it("全件成功時はfailedAttachments=0で従来どおりdirtyがクリアされる", async () => {
-    const meta = await addImageFromBlob("N1", new Blob([new Uint8Array([1])], { type: "image/png" }));
+    const meta = (await addAttachment("N1", new Blob([new Uint8Array([1])], { type: "image/png" })))!;
     const { f } = okFetch();
 
     const result = await runSync("tok", f);

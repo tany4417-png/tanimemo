@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
-import { addImageFromBlob } from "../lib/attachments";
+import { addAttachments, rejectedMessage } from "../lib/attachments";
 import { accentClassFor } from "../lib/colors";
+import { filesFromDataTransfer, hasFiles } from "../lib/filedrop";
 import { flattenFolderTree, listAllFolders } from "../lib/folders";
 import { canRedo, canUndo, histInit, histPush, histRedo, histUndo, type Hist } from "../lib/history";
 import { highlightMatches } from "../lib/highlight";
 import { renderMarkdown, toggleCheckbox } from "../lib/markdown";
 import type { Note } from "../lib/types";
-import { BackIcon, BellIcon, CloseIcon, ImageIcon, RedoIcon, UndoIcon } from "./icons";
+import { AttachmentFiles } from "./AttachmentFiles";
+import { BackIcon, BellIcon, ClipIcon, CloseIcon, ImageIcon, RedoIcon, UndoIcon } from "./icons";
 import { ImageOverlay, onImageDragStart } from "./ImageOverlay";
 import { ReminderSheet } from "./ReminderSheet";
 import { useAttachmentUrls } from "./useAttachmentUrls";
@@ -51,6 +53,8 @@ export function NoteScreen({ syncBar, slideClass, note, startEditing, startWithR
   const [draft, setDraft] = useState(note.body);
   const [movePickerOpen, setMovePickerOpen] = useState(false);
   const [reminderOpen, setReminderOpen] = useState(startWithReminder ?? false);
+  // 外部（エクスプローラ等）からのファイルドロップ中かどうか。枠線表示のみに使う
+  const [dropActive, setDropActive] = useState(false);
   const html = useMemo(() => renderMarkdown(note.body), [note.body]);
   // dangerouslySetInnerHTMLに渡す{__html}はオブジェクトごとメモ化する。React 19は参照が変わると
   // 文字列が同値でもinnerHTMLを再設定するため、インライン生成だと無関係な再レンダー（allFolders到着等）で
@@ -59,6 +63,7 @@ export function NoteScreen({ syncBar, slideClass, note, startEditing, startWithR
   const allFolders = useLiveQuery(listAllFolders, [], []);
   const flatFolders = useMemo(() => flattenFolderTree(allFolders), [allFolders]);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const anyFileInputRef = useRef<HTMLInputElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const viewRef = useRef<HTMLDivElement | null>(null);
   // ジャンプ（scrollIntoView）は初回表示の1回だけ。チェックボックス切替等でhtmlが変わって
@@ -245,11 +250,13 @@ export function NoteScreen({ syncBar, slideClass, note, startEditing, startWithR
     }
   }
 
-  // 選択・ペーストされたファイルのうち画像だけをattachments経由で保存し、保存完了ごとにonAttachedで同期をスケジュールする
+  // 選択・ペースト・ドロップされたファイルを種類を問わず保存し、完了ごとにonAttachedで同期をスケジュールする。
+  // 上限超過分は保存せず、最後にまとめて件数を知らせる
   async function attachFiles(files: Iterable<File>) {
-    const images = [...files].filter((f) => f.type.startsWith("image/"));
-    if (images.length === 0) return;
-    for (const f of images) await addImageFromBlob(note.id, f);
+    const list = [...files];
+    if (list.length === 0) return;
+    const rejected = await addAttachments(note.id, list);
+    if (rejected > 0) alert(rejectedMessage(rejected));
     onAttached?.();
   }
 
@@ -261,14 +268,37 @@ export function NoteScreen({ syncBar, slideClass, note, startEditing, startWithR
 
   function onEditorPaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
     const files = [...(e.clipboardData?.files ?? [])];
-    if (files.some((f) => f.type.startsWith("image/"))) {
+    if (files.length > 0) {
       e.preventDefault();
       void attachFiles(files);
     }
   }
 
+  // 外部（エクスプローラ等）からのHTML5ドロップ受け入れ。カード並べ替え・フォルダ移動の既存D&D
+  // （SwipeableCard・dnd.ts）はpointerイベント系なので系統が別で競合しない
+  function onDragOver(e: React.DragEvent) {
+    if (!hasFiles(e.dataTransfer)) return;
+    e.preventDefault();
+    setDropActive(true);
+  }
+  function onDragLeave(e: React.DragEvent) {
+    if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+    setDropActive(false);
+  }
+  function onDrop(e: React.DragEvent) {
+    if (!hasFiles(e.dataTransfer)) return;
+    e.preventDefault();
+    setDropActive(false);
+    void attachFiles(filesFromDataTransfer(e.dataTransfer));
+  }
+
   return (
-    <div className={`note screen ${slideClass}`}>
+    <div
+      className={`note screen ${slideClass}${dropActive ? " file-drop-active" : ""}`}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+    >
       <div className="list-header">
         {syncBar}
         <div className="toolbar">
@@ -282,6 +312,9 @@ export function NoteScreen({ syncBar, slideClass, note, startEditing, startWithR
             <button className="icon-btn" aria-label="写真を添付" onClick={() => fileInputRef.current?.click()}>
               <ImageIcon />
             </button>
+            <button className="icon-btn" aria-label="ファイルを添付" onClick={() => anyFileInputRef.current?.click()}>
+              <ClipIcon />
+            </button>
             <button
               className={(note.remindAt ?? null) != null ? "icon-btn accent" : "icon-btn"}
               aria-label="リマインダー"
@@ -293,6 +326,14 @@ export function NoteScreen({ syncBar, slideClass, note, startEditing, startWithR
               ref={fileInputRef}
               type="file"
               accept="image/*"
+              multiple
+              style={{ display: "none" }}
+              onChange={onPickFiles}
+            />
+            {/* accept無し＝PDF・Excel等どれでも。iOSでは「写真」「ブラウズ」の選択が出る */}
+            <input
+              ref={anyFileInputRef}
+              type="file"
               multiple
               style={{ display: "none" }}
               onChange={onPickFiles}
@@ -371,6 +412,7 @@ export function NoteScreen({ syncBar, slideClass, note, startEditing, startWithR
               {/* 編集中は貼った画像がすぐ見えるよう、ギャラリーを本文入力欄の上に置く（2026-07-21 オーナー要望）。
                   ×バッジ（1枚ずつ削除）も編集中だけ出す */}
               <Gallery noteId={note.id} showDeleteBadges onDeleteAttachment={onDeleteAttachment} />
+              <AttachmentFiles noteId={note.id} showDelete onDeleteAttachment={onDeleteAttachment} />
               <textarea
                 ref={textareaRef}
                 className="editor"
@@ -388,6 +430,7 @@ export function NoteScreen({ syncBar, slideClass, note, startEditing, startWithR
                 <div ref={viewRef} className="note-view" onClick={clickView} dangerouslySetInnerHTML={htmlObj} />
               )}
               <Gallery noteId={note.id} onDeleteAttachment={onDeleteAttachment} />
+              <AttachmentFiles noteId={note.id} />
             </>
           )}
         </div>
@@ -407,10 +450,10 @@ export function Gallery({
   onDeleteAttachment?: (attId: string) => void;
 }) {
   // 一覧グリッドは軽いサムネイル、原寸オーバーレイだけ本体blobを使う（一覧・起動を重くしないため）
-  const { metas, urls } = useAttachmentUrls(noteId, undefined, { thumb: true });
+  const { metas, urls } = useAttachmentUrls(noteId, undefined, { thumb: true, kind: "image" });
   // OSへのドラッグアウト用に、原寸blobのobjectURLも別途用意する（サムネのままだと画質が粗いため）。
   // 未取得（オフライン等でfetchが失敗した添付）はurlsに入らず、その添付はドラッグアウト無効のまま表示される
-  const { urls: fullUrls } = useAttachmentUrls(noteId, undefined, { thumb: false });
+  const { urls: fullUrls } = useAttachmentUrls(noteId, undefined, { thumb: false, kind: "image" });
   const [fullId, setFullId] = useState<string | null>(null);
 
   return (

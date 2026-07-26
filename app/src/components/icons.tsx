@@ -131,3 +131,51 @@ export function CloseIcon({ size = 24, className }: IconProps) {
     </svg>
   );
 }
+
+// クリップ（添付ファイル）
+export function ClipIcon({ size = 24, className }: IconProps) {
+  return (
+    <svg width={size} height={size} className={className} {...common}>
+      <path d="M21 11.5l-8.8 8.8a5 5 0 0 1-7.1-7.1l9-9a3.3 3.3 0 0 1 4.7 4.7l-9 9a1.7 1.7 0 0 1-2.4-2.4l8.3-8.3" />
+    </svg>
+  );
+}
+
+// 書類（ファイル添付の行頭）
+export function FileIcon({ size = 24, className }: IconProps) {
+  return (
+    <svg width={size} height={size} className={className} {...common}>
+      <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
+      <polyline points="14 3 14 8 19 8" />
+    </svg>
+  );
+}
+
+// 保存（ダウンロード）
+export function DownloadIcon({ size = 24, className }: IconProps) {
+  return (
+    <svg width={size} height={size} className={className} {...common}>
+      <path d="M12 4v10" />
+      <polyline points="8 11 12 15 16 11" />
+      <path d="M5 19h14" />
+    </svg>
+  );
+}
+
+// 山形・左（カレンダーの前の月へ）
+export function ChevronLeftIcon({ size = 24, className }: IconProps) {
+  return (
+    <svg width={size} height={size} className={className} {...common}>
+      <polyline points="15 5 8 12 15 19" />
+    </svg>
+  );
+}
+
+// 山形・右（カレンダーの次の月へ）
+export function ChevronRightIcon({ size = 24, className }: IconProps) {
+  return (
+    <svg width={size} height={size} className={className} {...common}>
+      <polyline points="9 5 16 12 9 19" />
+    </svg>
+  );
+}

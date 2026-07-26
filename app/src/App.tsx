@@ -7,7 +7,7 @@ import { Settings } from "./components/Settings";
 import { SyncStatus } from "./components/SyncStatus";
 import { TrashScreen } from "./components/TrashScreen";
 import { popRedo, popUndo, pushAction, type ActionStacks } from "./lib/actions";
-import { addImageFromBlob, restoreAttachment, softDeleteAttachment } from "./lib/attachments";
+import { addAttachments, rejectedMessage, restoreAttachment, softDeleteAttachment } from "./lib/attachments";
 import { db } from "./lib/db";
 import { exportZip, localYmd } from "./lib/export";
 import { ensurePushSubscription, isPushEnabled } from "./lib/push";
@@ -276,10 +276,14 @@ export default function App() {
       if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) return;
       const items = [...(e.clipboardData?.items ?? [])];
       const files = items.filter((i) => i.kind === "file").map((i) => i.getAsFile()).filter((f): f is File => f !== null);
-      const images = files.filter((f) => f.type.startsWith("image/"));
-      if (images.length > 0) {
-        const n = await createNote("");
-        for (const f of images) await addImageFromBlob(n.id, f);
+      if (files.length > 0) {
+        const n = await createNote("", currentFolderId);
+        const rejected = await addAttachments(n.id, files);
+        if (rejected > 0) alert(rejectedMessage(rejected));
+        // 全件が上限超過で1件も添付できなかった場合、本文も添付も無い空メモが残ってしまう。
+        // この経路は「戻る」を通らないためdiscardIfEmptyNewが自動では走らず、無言で空カードが
+        // 一覧に増える（2026-07-26 実バグ）。作った直後にその場で後始末する
+        if (rejected === files.length) await discardIfEmptyNew(n.id, { preferTrash: syncing.current });
         scheduleSync();
         return;
       }
@@ -291,7 +295,7 @@ export default function App() {
     }
     document.addEventListener("paste", onPaste);
     return () => document.removeEventListener("paste", onPaste);
-  }, [view, scheduleSync]);
+  }, [view, scheduleSync, currentFolderId]);
 
   // "それ以外の遷移"（進み操作）用のsetViewラッパ。navDirectionを"forward"にしてから画面を切り替える
   const goForward = useCallback((v: View) => {
@@ -377,6 +381,21 @@ export default function App() {
     setSuppressSlideIn(true);
     setView({ name: "note", id: n.id, isNew: true });
   }, [currentFolderId]);
+
+  // 一覧画面に外部（エクスプローラ等）からファイルを落としたら、開いているフォルダの中に
+  // 新規メモを作って添付する（ルートならフォルダなし）。onPasteと同じaddAttachments/rejectedMessageの形
+  const onDropFiles = useCallback(
+    async (files: File[]) => {
+      if (files.length === 0) return;
+      const n = await createNote("", currentFolderId);
+      const rejected = await addAttachments(n.id, files);
+      if (rejected > 0) alert(rejectedMessage(rejected));
+      // onPasteと同じ後始末（2026-07-26 実バグ）: 全件上限超過だと空メモが残るため、その場で消す
+      if (rejected === files.length) await discardIfEmptyNew(n.id, { preferTrash: syncing.current });
+      scheduleSync();
+    },
+    [currentFolderId, scheduleSync]
+  );
 
   // フォルダカードで下の階層へ入る（進み操作＝forward）
   const onOpenFolder = useCallback((id: string | null) => {
@@ -802,6 +821,7 @@ export default function App() {
           onMoveFolder={onMoveFolder}
           onReorderNote={onReorderNote}
           onReorderFolder={onReorderFolder}
+          onDropFiles={(files) => void onDropFiles(files)}
         />
       )}
       {view.name === "note" && current && (
@@ -888,9 +908,9 @@ export default function App() {
           }}
           onBack={navigateBack}
           onExport={async () => {
-            const { blob, missingImages } = await exportZip(token);
-            if (missingImages > 0) {
-              alert(`未取得の画像 ${missingImages}件はこの端末に無いため含まれていません`);
+            const { blob, missingFiles } = await exportZip(token);
+            if (missingFiles > 0) {
+              alert(`未取得の添付 ${missingFiles}件はこの端末に無いため含まれていません`);
             }
             const a = document.createElement("a");
             a.href = URL.createObjectURL(blob);
@@ -932,6 +952,15 @@ export default function App() {
             // リマインダーフォルダ発の新規＝通知付きメモ。ルート直下に作り、シートを開いた状態で始める。
             // 新規は即表示（onCreateと同じ理由でスライドインを再生しない）
             const n = await createNote("", null);
+            setNavDirection("forward");
+            setSuppressSlideIn(true);
+            setView({ name: "note", id: n.id, isNew: true, withReminder: true });
+          }}
+          onCreateAt={async (atMs) => {
+            // カレンダーの日付から作る通知付きメモ。選んだ日の9:00を入れた状態でシートを開く。
+            // remindAtは作成と同じ1トランザクションで書く（createNote→updateNoteの2段だと、
+            // その間にliveQueryが発火してremindAt: nullの状態でNoteScreenが開きうる・2026-07-26 実バグ）
+            const n = await createNote("", null, { remindAt: atMs, repeatRule: null });
             setNavDirection("forward");
             setSuppressSlideIn(true);
             setView({ name: "note", id: n.id, isNew: true, withReminder: true });

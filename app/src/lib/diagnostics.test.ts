@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { addImageFromBlob } from "./attachments";
+import { addAttachment } from "./attachments";
 import { collectDiagnostics } from "./diagnostics";
 import { db, resetDbForTests } from "./db";
 import { createFolder } from "./folders";
@@ -26,7 +26,7 @@ describe("collectDiagnostics", () => {
     await createNote("b");
     await softDeleteNote(a.id); // aはゴミ箱行き（deleted=1のまま）。有効メモ数からは外れる
     await createFolder("f1", null);
-    await addImageFromBlob("b", new Blob([new Uint8Array([1])], { type: "image/png" }));
+    await addAttachment("b", new Blob([new Uint8Array([1])], { type: "image/png" }));
     await db.meta.put({ key: "lastSync", value: 123456 });
     await db.meta.put({ key: "fullResyncV4", value: 1 });
 

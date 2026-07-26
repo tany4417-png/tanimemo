@@ -9,13 +9,13 @@ const base = { importance: 0 as const, createdAt: 1, updatedAt: 1, deleted: 0 as
 
 // 他画面（TrashScreen等）と同様、syncBar/slideClassはApp.tsxが一度だけ組み立てて渡すが、
 // 単体テストでは中身を問わないのでnull/空文字で十分
-const screenProps = { syncBar: null, slideClass: "", onCreate: () => {}, onDelete: () => {} };
+const screenProps = { syncBar: null, slideClass: "", onCreate: () => {}, onDelete: () => {}, onCreateAt: () => {} };
 
 // 行はSwipeableCard（.card.reminder-row）になったため、role=listitemではなくクラスで拾う
 const rowEls = () => Array.from(document.querySelectorAll<HTMLElement>(".reminder-row"));
 
 describe("RemindersScreen", () => {
-  beforeEach(async () => { await resetDbForTests(); });
+  beforeEach(async () => { localStorage.clear(); await resetDbForTests(); });
   it("未来のリマインダーが時刻順に並ぶ", async () => {
     const now = Date.now();
     await db.notes.bulkAdd([
@@ -92,5 +92,35 @@ describe("RemindersScreen", () => {
     const items = rowEls();
     expect(items[0].querySelector(".unread-dot")).not.toBeNull();
     expect(items[1].querySelector(".unread-dot")).toBeNull();
+  });
+  it("暦に切り替えるとカレンダーが出て、一覧に戻せる", async () => {
+    render(<RemindersScreen {...screenProps} onOpenNote={() => {}} onBack={() => {}} />);
+    screen.getByRole("button", { name: "暦" }).click();
+    await vi.waitFor(() => expect(document.querySelectorAll(".cal-cell").length).toBe(42));
+    screen.getByRole("button", { name: "一覧" }).click();
+    // React19+act外のクリックは再描画が次tickに回るため、同期expectでなくwaitForで確認する
+    await vi.waitFor(() => expect(document.querySelectorAll(".cal-cell").length).toBe(0));
+  });
+  it("選んだ表示はlocalStorageに残る", async () => {
+    const { unmount } = render(<RemindersScreen {...screenProps} onOpenNote={() => {}} onBack={() => {}} />);
+    screen.getByRole("button", { name: "暦" }).click();
+    expect(localStorage.getItem("tanimemo.reminderView")).toBe("calendar");
+    unmount();
+    render(<RemindersScreen {...screenProps} onOpenNote={() => {}} onBack={() => {}} />);
+    await vi.waitFor(() => expect(document.querySelectorAll(".cal-cell").length).toBe(42));
+  });
+  it("localStorageが読めない環境でも落ちずに一覧表示で開ける", async () => {
+    // プライベートブラウズ等、getItemが例外を投げる環境を模す（getItemはレンダー中の遅延初期化で呼ばれる）
+    const spy = vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new Error("denied");
+    });
+    try {
+      render(<RemindersScreen {...screenProps} onOpenNote={() => {}} onBack={() => {}} />);
+    } finally {
+      spy.mockRestore();
+    }
+    // クラッシュせず既定の一覧表示になる（暦セルは出ない・一覧が選択状態）
+    expect(document.querySelectorAll(".cal-cell").length).toBe(0);
+    expect(screen.getByRole("button", { name: "一覧" }).className).toContain("on");
   });
 });

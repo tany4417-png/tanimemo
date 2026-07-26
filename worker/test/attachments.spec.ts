@@ -1,5 +1,6 @@
 import { SELF } from "cloudflare:test";
 import { describe, it, expect } from "vitest";
+import { MAX_ATTACHMENT_BYTES } from "../src/attachments";
 
 const TOKEN = { Authorization: "Bearer test-token" };
 
@@ -35,5 +36,27 @@ describe("/api/attachments", () => {
   it("無いIDのGETは404", async () => {
     const res = await SELF.fetch("https://example.com/api/attachments/NONE", { headers: TOKEN });
     expect(res.status).toBe(404);
+  });
+
+  it("上限(50MB)を超えるPUTは413で拒否し、保存もされない（Content-Lengthベース）", async () => {
+    const big = new Uint8Array(MAX_ATTACHMENT_BYTES + 1);
+    const res = await SELF.fetch("https://example.com/api/attachments/BIGATT?noteId=N1", {
+      method: "PUT",
+      headers: { ...TOKEN, "Content-Type": "application/pdf", "Content-Length": String(big.byteLength) },
+      body: big,
+    });
+    expect(res.status).toBe(413);
+    const get = await SELF.fetch("https://example.com/api/attachments/BIGATT", { headers: TOKEN });
+    expect(get.status).toBe(404);
+  });
+
+  it("上限ちょうどのPUTは通る", async () => {
+    const exact = new Uint8Array(MAX_ATTACHMENT_BYTES);
+    const res = await SELF.fetch("https://example.com/api/attachments/EXACTATT?noteId=N1", {
+      method: "PUT",
+      headers: { ...TOKEN, "Content-Type": "application/pdf", "Content-Length": String(exact.byteLength) },
+      body: exact,
+    });
+    expect(res.status).toBe(200);
   });
 });

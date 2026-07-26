@@ -1,6 +1,15 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { db, resetDbForTests } from "./db";
-import { addImageFromBlob, getImageBlob, restoreAttachment, softDeleteAttachment, thumbKey } from "./attachments";
+import {
+  addAttachment,
+  addAttachments,
+  getImageBlob,
+  MAX_ATTACHMENT_BYTES,
+  rejectedMessage,
+  restoreAttachment,
+  softDeleteAttachment,
+  thumbKey,
+} from "./attachments";
 
 beforeEach(async () => {
   await resetDbForTests();
@@ -15,28 +24,90 @@ describe("thumbKey", () => {
   });
 });
 
-describe("addImageFromBlob", () => {
+describe("addAttachment", () => {
   it("メタ(dirty=1)と実体が保存される", async () => {
-    const meta = await addImageFromBlob("NOTE1", new Blob([new Uint8Array([1, 2])], { type: "image/png" }));
-    expect(meta.noteId).toBe("NOTE1");
-    expect(meta.mime).toBe("image/png");
-    expect(meta.size).toBe(2);
-    expect(meta.dirty).toBe(1);
-    expect(await db.attachmentBlobs.get(meta.id)).toBeDefined();
+    const meta = await addAttachment("NOTE1", new Blob([new Uint8Array([1, 2])], { type: "image/png" }));
+    expect(meta?.noteId).toBe("NOTE1");
+    expect(meta?.mime).toBe("image/png");
+    expect(meta?.size).toBe(2);
+    expect(meta?.dirty).toBe(1);
+    expect(await db.attachmentBlobs.get(meta!.id)).toBeDefined();
   });
 
-  it("本体保存後にサムネレコード（:thumbキー）も保存される", async () => {
-    const meta = await addImageFromBlob("NOTE1", new Blob([new Uint8Array([1, 2])], { type: "image/png" }));
-    const thumbRec = await db.attachmentBlobs.get(thumbKey(meta.id));
+  it("本体保存後にサムネレコード（:thumbキー）も保存される（画像の場合）", async () => {
+    const meta = await addAttachment("NOTE1", new Blob([new Uint8Array([1, 2])], { type: "image/png" }));
+    const thumbRec = await db.attachmentBlobs.get(thumbKey(meta!.id));
     expect(thumbRec).toBeDefined();
     // attachments（メタ）テーブルにはサムネ用の行が作られない＝export/syncの走査対象に混ざらない
-    expect(await db.attachments.get(thumbKey(meta.id))).toBeUndefined();
+    expect(await db.attachments.get(thumbKey(meta!.id))).toBeUndefined();
+  });
+
+  it("Fileのファイル名をnameに保存する", async () => {
+    const f = new File([new Uint8Array([1, 2])], "見積書.pdf", { type: "application/pdf" });
+    const meta = await addAttachment("N", f);
+    expect(meta?.name).toBe("見積書.pdf");
+    expect(meta?.mime).toBe("application/pdf");
+  });
+
+  it("名前のないBlobには生成名が入る", async () => {
+    const meta = await addAttachment("N", new Blob([new Uint8Array([1])], { type: "image/png" }));
+    expect(meta?.name).toMatch(/^画像-\d{8}-\d{4}\.png$/);
+  });
+
+  it("非画像はサムネイルを作らない", async () => {
+    const f = new File([new Uint8Array([1])], "a.pdf", { type: "application/pdf" });
+    const meta = await addAttachment("N", f);
+    expect(await db.attachmentBlobs.get(thumbKey(meta!.id))).toBeUndefined();
+  });
+
+  it("画像はサムネイルを作る", async () => {
+    const f = new File([new Uint8Array([1])], "a.png", { type: "image/png" });
+    const meta = await addAttachment("N", f);
+    expect(await db.attachmentBlobs.get(thumbKey(meta!.id))).toBeDefined();
+  });
+
+  it("上限を超えるファイルはnullを返し保存しない", async () => {
+    const big = { size: MAX_ATTACHMENT_BYTES + 1, type: "application/pdf", name: "big.pdf" } as unknown as File;
+    expect(await addAttachment("N", big)).toBeNull();
+    expect(await db.attachments.count()).toBe(0);
+  });
+});
+
+describe("addAttachments", () => {
+  it("複数ファイルがすべて保存される", async () => {
+    const files = [
+      new File([new Uint8Array([1])], "a.pdf", { type: "application/pdf" }),
+      new File([new Uint8Array([2])], "b.png", { type: "image/png" }),
+    ];
+    const rejected = await addAttachments("N", files);
+    expect(rejected).toBe(0);
+    expect(await db.attachments.where("noteId").equals("N").count()).toBe(2);
+  });
+
+  it("上限超過分だけ保存されず、件数を返す", async () => {
+    const big = { size: MAX_ATTACHMENT_BYTES + 1, type: "application/pdf", name: "big.pdf" } as unknown as File;
+    const ok = new File([new Uint8Array([1])], "a.pdf", { type: "application/pdf" });
+    const rejected = await addAttachments("N", [big, ok, big]);
+    expect(rejected).toBe(2);
+    expect(await db.attachments.where("noteId").equals("N").count()).toBe(1);
+  });
+
+  it("空配列なら何も保存せずrejectedは0", async () => {
+    const rejected = await addAttachments("N", []);
+    expect(rejected).toBe(0);
+    expect(await db.attachments.count()).toBe(0);
+  });
+});
+
+describe("rejectedMessage", () => {
+  it("件数を埋め込んだ上限超過メッセージを返す", () => {
+    expect(rejectedMessage(3)).toBe("3件は50MBを超えるため添付できませんでした");
   });
 });
 
 describe("softDeleteAttachment / restoreAttachment", () => {
   it("softDeleteでdeleted=1・dirty=1になり、updatedAtが進む", async () => {
-    const meta = await addImageFromBlob("N", new Blob([new Uint8Array([1])], { type: "image/png" }));
+    const meta = (await addAttachment("N", new Blob([new Uint8Array([1])], { type: "image/png" })))!;
     await db.attachments.update(meta.id, { dirty: 0 });
     await new Promise((r) => setTimeout(r, 10));
     await softDeleteAttachment(meta.id);
@@ -47,7 +118,7 @@ describe("softDeleteAttachment / restoreAttachment", () => {
   });
 
   it("restoreでdeleted=0に戻り、dirty=1が付く", async () => {
-    const meta = await addImageFromBlob("N", new Blob([new Uint8Array([1])], { type: "image/png" }));
+    const meta = (await addAttachment("N", new Blob([new Uint8Array([1])], { type: "image/png" })))!;
     await softDeleteAttachment(meta.id);
     await db.attachments.update(meta.id, { dirty: 0 });
     await restoreAttachment(meta.id);
@@ -59,7 +130,7 @@ describe("softDeleteAttachment / restoreAttachment", () => {
 
 describe("getImageBlob", () => {
   it("キャッシュがあればfetchしない", async () => {
-    const meta = await addImageFromBlob("N", new Blob([new Uint8Array([1])], { type: "image/png" }));
+    const meta = (await addAttachment("N", new Blob([new Uint8Array([1])], { type: "image/png" })))!;
     let called = 0;
     const f = (async () => { called += 1; return new Response(""); }) as typeof fetch;
     const blob = await getImageBlob(meta.id, "tok", f);
@@ -98,7 +169,7 @@ describe("getImageBlob（thumb指定）", () => {
   });
 
   it("thumbが無ければ本体から生成して:thumbキーで保存する", async () => {
-    const meta = await addImageFromBlob("N", new Blob([new Uint8Array([1, 2, 3])], { type: "image/png" }));
+    const meta = (await addAttachment("N", new Blob([new Uint8Array([1, 2, 3])], { type: "image/png" })))!;
     await db.attachmentBlobs.delete(thumbKey(meta.id));
     const blob = await getImageBlob(meta.id, "tok", fetch, { thumb: true });
     expect(blob).not.toBeNull();

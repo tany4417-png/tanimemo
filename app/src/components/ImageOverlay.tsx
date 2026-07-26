@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { getImageBlob } from "../lib/attachments";
 import { downloadUrlSpec } from "../lib/dragout";
-import { mimeToExt } from "../lib/export";
+import { mimeToExt } from "../lib/mime";
 import type { AttachmentMeta } from "../lib/types";
 import { clampPan, DOUBLE_TAP_SCALE, pinchScale, zoomAt, type ZoomState } from "../lib/zoom";
 import { CloseIcon } from "./icons";

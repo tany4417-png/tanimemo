@@ -27,6 +27,8 @@ export type AttachmentRecord = {
   createdAt: number;
   updatedAt: number;
   deleted: 0 | 1;
+  // 元のファイル名。旧クライアントはこのフィールド自体を送らない（upsertAttachmentはその場合nameを現状維持する）
+  name?: string;
 };
 
 export type FolderRecord = {

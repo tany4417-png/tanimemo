@@ -1,18 +1,15 @@
 import { strToU8, zipSync } from "fflate";
+import { extFromName, isImageMime } from "./attachment-view";
 import { getImageBlob } from "./attachments";
 import { db } from "./db";
 import { folderPath } from "./folders";
 import { firstLineTitle } from "./markdown";
+import { mimeToExt } from "./mime";
 import type { Note } from "./types";
 
 export function slugify(title: string): string {
   const s = title.replace(/[\\/:*?"<>|#\s]+/g, "-").replace(/^-+|-+$/g, "");
   return s.slice(0, 30) || "memo";
-}
-
-export function mimeToExt(mime: string): string {
-  const map: Record<string, string> = { "image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/webp": "webp" };
-  return map[mime] ?? "bin";
 }
 
 export function localYmd(d: Date): string {
@@ -41,7 +38,7 @@ export function noteContent(n: Note, folderPathStr = ""): string {
 export async function exportZip(
   token = "",
   fetchFn: typeof fetch = fetch
-): Promise<{ blob: Blob; missingImages: number }> {
+): Promise<{ blob: Blob; missingFiles: number }> {
   const files: Record<string, Uint8Array> = {};
   const notes = (await db.notes.toArray()).filter((n) => n.deleted === 0);
   for (const n of notes) {
@@ -50,16 +47,21 @@ export async function exportZip(
     files[notePath(n)] = strToU8(noteContent(n, folderPathStr));
   }
   const atts = (await db.attachments.toArray()).filter((a) => a.deleted === 0);
-  let missingImages = 0;
+  // 画像・非画像を問わずカウントする（旧名missingImagesの名残: 非画像添付も同じカウンタで
+  // 数えるようになったため、変数名も文言も実態に合わせてmissingFilesにした）
+  let missingFiles = 0;
   for (const a of atts) {
     const rec = await db.attachmentBlobs.get(a.id);
     let blob = rec?.blob ?? null;
     if (!blob && token) blob = await getImageBlob(a.id, token, fetchFn);
     if (blob) {
-      files[`images/${a.id}.${mimeToExt(a.mime)}`] = new Uint8Array(await blob.arrayBuffer());
+      // 拡張子はファイル名を優先（mimeToExtは画像しか知らないため、PDF等が.binになるのを避ける）
+      const ext = extFromName(a.name) || mimeToExt(a.mime);
+      const dir = isImageMime(a.mime) ? "images" : "files";
+      files[`${dir}/${a.id}.${ext}`] = new Uint8Array(await blob.arrayBuffer());
     } else {
-      missingImages += 1;
+      missingFiles += 1;
     }
   }
-  return { blob: new Blob([zipSync(files)], { type: "application/zip" }), missingImages };
+  return { blob: new Blob([zipSync(files)], { type: "application/zip" }), missingFiles };
 }

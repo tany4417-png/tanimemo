@@ -15,6 +15,13 @@ function folder(over: Record<string, unknown> = {}) {
   return { id: "01FOLDER", name: "仕事", parentId: null, createdAt: 100, updatedAt: 100, deleted: 0, ...over };
 }
 
+function att(over: Record<string, unknown> = {}) {
+  return {
+    id: "01ATT", noteId: "01NOTE", mime: "application/pdf", size: 10,
+    createdAt: 100, updatedAt: 100, deleted: 0, ...over,
+  };
+}
+
 describe("/api/sync", () => {
   afterEach(async () => {
     await env.DB.prepare("DELETE FROM notes").run();
@@ -95,11 +102,27 @@ describe("/api/sync", () => {
   });
 
   it("添付メタも往復する", async () => {
-    const att = { id: "01ATT", noteId: "01NOTE", mime: "image/png", size: 3, createdAt: 100, updatedAt: 100, deleted: 0 };
-    await sync({ since: 0, notes: [], attachments: [att] });
+    const attMeta = { id: "01ATT", noteId: "01NOTE", mime: "image/png", size: 3, createdAt: 100, updatedAt: 100, deleted: 0 };
+    await sync({ since: 0, notes: [], attachments: [attMeta] });
     const data = await (await sync({ since: 0, notes: [], attachments: [] })).json() as any;
     expect(data.attachments).toHaveLength(1);
     expect(data.attachments[0].noteId).toBe("01NOTE");
+  });
+
+  it("添付のnameがpush/pullで往復する", async () => {
+    await sync({ since: 0, notes: [], attachments: [att({ name: "見積書.pdf" })] });
+    const data = await (await sync({ since: 0, notes: [], attachments: [] })).json() as any;
+    expect(data.attachments[0].name).toBe("見積書.pdf");
+  });
+
+  it("nameフィールドを持たない旧クライアントのpushで既存の名前が消えない", async () => {
+    await sync({ since: 0, notes: [], attachments: [att({ name: "見積書.pdf", updatedAt: 100 })] });
+    // 旧クライアントはnameフィールド自体を送らない。更新時刻はこちらが新しい
+    await sync({ since: 0, notes: [], attachments: [att({ updatedAt: 200, size: 20 })] });
+    const data = await (await sync({ since: 0, notes: [], attachments: [] })).json() as any;
+    expect(data.attachments[0].name).toBe("見積書.pdf");
+    expect(data.attachments[0].size).toBe(20);
+    expect(data.attachments[0].updatedAt).toBe(200);
   });
 
   it("30日を過ぎた削除済みメモは同期時に完全削除される（本体は消え、削除スタブのみ残る）", async () => {
@@ -290,6 +313,36 @@ describe("/api/sync", () => {
     const after = data.folders.find((f: any) => f.id === "OLDCLIENTFOLDERORDER");
     expect(after?.name).toBe("edited-by-old-client");
     expect(after?.orderKey).toBe(5);
+  });
+
+  it("PUT→POSTの実際の順序で送ってもnameが消えない（2026-07-26 実バグ: PUTの保険行がPOSTのLWWに勝っていた）", async () => {
+    // runSyncは常にPUT（blob）→POST（name付きメタ）の順で送る。PUTがメタ行を現在時刻で
+    // 先に作ると、直後のPOSTが送るクライアント時刻のupdatedAtがそれを上回れずLWWで負け、
+    // nameがNULLのまま返り続けていた（同期後に添付名が消える実バグ）
+    //
+    // clientNowはPUTより前（かつ明確に過去）の時刻にする（2026-07-26 レビュー指摘・歯のあるテストに
+    // 修正）。実際のrunSyncでは添付作成〜3秒デバウンス〜同期実行という時間差があるため、
+    // クライアントのupdatedAtは同期時点より必ず過去になる。ここをDate.now()のまま（PUTの後）に
+    // すると、修正前の実装（保険行のupdated_at=PUT時刻）でもclientNow > PUT時刻を満たしてしまい
+    // LWWが素通りするため、バグが再発してもこのテストは検出できない
+    const clientNow = Date.now() - 5000;
+    await SELF.fetch("https://example.com/api/attachments/NAMEATT?noteId=N1", {
+      method: "PUT", headers: { Authorization: "Bearer test-token", "Content-Type": "application/pdf" }, body: new Uint8Array([1, 2, 3]),
+    });
+    const res = await sync({
+      since: 0, notes: [],
+      attachments: [{
+        id: "NAMEATT", noteId: "N1", mime: "application/pdf", size: 3, name: "見積書.pdf",
+        createdAt: clientNow, updatedAt: clientNow, deleted: 0,
+      }],
+    });
+    // 同じ応答（POSTのpull）で既にnameが正しく返る
+    const data = await res.json() as any;
+    expect(data.attachments.find((a: any) => a.id === "NAMEATT")?.name).toBe("見積書.pdf");
+
+    // 続くpullでも消えない
+    const r2 = await (await sync({ since: 0, notes: [], attachments: [] })).json() as any;
+    expect(r2.attachments.find((a: any) => a.id === "NAMEATT")?.name).toBe("見積書.pdf");
   });
 
   describe("reminder columns", () => {

@@ -1,4 +1,5 @@
 import { ulid } from "ulid";
+import { fallbackName, isImageMime } from "./attachment-view";
 import { db } from "./db";
 import type { AttachmentMeta } from "./types";
 
@@ -47,20 +48,45 @@ export async function makeThumbnail(blob: Blob, maxEdge = 320): Promise<Blob> {
   }
 }
 
-export async function addImageFromBlob(noteId: string, blob: Blob): Promise<AttachmentMeta> {
+// 1ファイルの上限。R2・D1側の制限ではなく、端末のメモリとアップロード時間を考えた運用上の線引き
+export const MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024;
+
+// 添付を1件保存する。上限超過はnullを返す（呼び出し側でまとめて件数を知らせる）
+export async function addAttachment(noteId: string, file: File | Blob): Promise<AttachmentMeta | null> {
+  if (file.size > MAX_ATTACHMENT_BYTES) return null;
   const now = Date.now();
+  const mime = file.type || "application/octet-stream";
+  const name = file instanceof File && file.name ? file.name : fallbackName(mime, now);
   const meta: AttachmentMeta = {
-    id: ulid(), noteId, mime: blob.type || "application/octet-stream", size: blob.size,
+    id: ulid(), noteId, mime, size: file.size, name,
     createdAt: now, updatedAt: now, deleted: 0, dirty: 1,
   };
   await db.transaction("rw", db.attachments, db.attachmentBlobs, async () => {
     await db.attachments.put(meta);
-    await db.attachmentBlobs.put({ id: meta.id, blob });
+    await db.attachmentBlobs.put({ id: meta.id, blob: file });
   });
-  // 本体保存後にサムネも生成・保存する（一覧・Galleryのサムネ表示を軽くするため）
-  const thumb = await makeThumbnail(blob);
-  await db.attachmentBlobs.put({ id: thumbKey(meta.id), blob: thumb });
+  // サムネは画像だけ。非画像でmakeThumbnailを呼ぶと元blobがそのまま返り、本体のコピーを二重に持つことになる
+  if (isImageMime(mime)) {
+    const thumb = await makeThumbnail(file);
+    await db.attachmentBlobs.put({ id: thumbKey(meta.id), blob: thumb });
+  }
   return meta;
+}
+
+// 複数ファイルをまとめて添付し、上限超過で保存できなかった件数を返す。
+// 呼び出し側は件数をまとめて知らせる（1件ずつalertを出さないため）
+export async function addAttachments(noteId: string, files: Iterable<File>): Promise<number> {
+  let rejected = 0;
+  for (const f of files) {
+    const meta = await addAttachment(noteId, f);
+    if (!meta) rejected += 1;
+  }
+  return rejected;
+}
+
+// 上限超過を知らせる文言。メモ画面・一覧ペースト・ドロップの3経路で同じ文言を出すため一本化する
+export function rejectedMessage(rejected: number): string {
+  return `${rejected}件は50MBを超えるため添付できませんでした`;
 }
 
 // 添付1枚の個別削除（2026-07-21 オーナー要望）。メモ本体と同じtombstone方式で、deleted=1が

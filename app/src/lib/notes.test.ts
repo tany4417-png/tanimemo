@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { addAttachments, MAX_ATTACHMENT_BYTES } from "./attachments";
 import { db, resetDbForTests } from "./db";
 import { createFolder } from "./folders";
 import {
@@ -35,6 +36,21 @@ describe("メモCRUD", () => {
   it("folderIdを指定して作成できる", async () => {
     const n = await createNote("body", "FOLDER1");
     expect(n.folderId).toBe("FOLDER1");
+  });
+
+  it("opts省略時はremindAt/repeatRuleがnull（既存呼び出しと互換）", async () => {
+    const n = await createNote("body");
+    expect(n.remindAt).toBeNull();
+    expect(n.repeatRule).toBeNull();
+  });
+
+  it("optsでremindAt/repeatRuleを渡すと作成と同時に1回で設定される（onCreateAtのレース対策・2026-07-26）", async () => {
+    const n = await createNote("", null, { remindAt: 123456, repeatRule: '{"type":"daily"}' });
+    expect(n.remindAt).toBe(123456);
+    expect(n.repeatRule).toBe('{"type":"daily"}');
+    const saved = await db.notes.get(n.id);
+    expect(saved?.remindAt).toBe(123456);
+    expect(saved?.repeatRule).toBe('{"type":"daily"}');
   });
 
   it("updateNoteでfolderIdを変更できる", async () => {
@@ -195,6 +211,30 @@ describe("空メモの破棄（discardIfEmptyNew）", () => {
     expect(await discardIfEmptyNew(n.id)).toBe("deleted");
     expect(await db.attachments.get("A4")).toBeUndefined();
     expect(await db.attachmentBlobs.get("A4")).toBeUndefined();
+  });
+});
+
+describe("添付が全滅した新規メモの後始末（App.tsxのpaste/drop経路・2026-07-26 実バグ）", () => {
+  // App.tsx自体にはコンポーネントテストが無いため、実際のonPaste/onDropFilesハンドラが辿るのと
+  // 同じ関数列（createNote→addAttachments全滅→discardIfEmptyNew）をここで検証する。
+  // 50MB超のファイルだけを落とす／貼り付けると、全件addAttachmentsが弾いて実体の無いメモが残っていた
+  it("上限超過ファイルだけを添付しようとして全滅した場合、discardIfEmptyNewは物理削除する", async () => {
+    const n = await createNote("", null);
+    const big = { size: MAX_ATTACHMENT_BYTES + 1, type: "application/pdf", name: "big.pdf" } as unknown as File;
+    const rejected = await addAttachments(n.id, [big, big]);
+    expect(rejected).toBe(2);
+    expect(await discardIfEmptyNew(n.id)).toBe("deleted");
+    expect(await db.notes.get(n.id)).toBeUndefined();
+  });
+
+  it("一部だけ上限超過なら添付が残るためdiscardIfEmptyNewは何もしない（kept）", async () => {
+    const n = await createNote("", null);
+    const big = { size: MAX_ATTACHMENT_BYTES + 1, type: "application/pdf", name: "big.pdf" } as unknown as File;
+    const ok = new File([new Uint8Array([1])], "ok.pdf", { type: "application/pdf" });
+    const rejected = await addAttachments(n.id, [big, ok]);
+    expect(rejected).toBe(1);
+    expect(await discardIfEmptyNew(n.id)).toBe("kept");
+    expect(await db.notes.get(n.id)).toBeDefined();
   });
 });
 

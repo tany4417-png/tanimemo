@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "../lib/db";
+import { filesFromDataTransfer, hasFiles } from "../lib/filedrop";
 import { firstLineTitle, urlOnly } from "../lib/markdown";
 import { reminderLabel } from "../lib/reminder-label";
 import { makeSnippet } from "../lib/search";
@@ -48,12 +49,35 @@ type Props = {
   onMoveFolder: (id: string, parentId: string | null) => void;
   onReorderNote: (plan: ReorderPlan<{ id: string; orderKey: number | null }>) => void;
   onReorderFolder: (plan: ReorderPlan<{ id: string; orderKey: number | null }>) => void;
+  // 外部（エクスプローラ等）からのファイルドロップ。開いているフォルダの中に新規メモを作って添付する
+  // （App.tsx側で実処理）
+  onDropFiles: (files: File[]) => void;
 };
 
 export function NoteList(p: Props) {
   const isBrowsingFolder = p.isBrowsingFolder;
   // スワイプで削除ボタンが開いているカードのid（メモ・フォルダ共通、開けるのは同時に1枚だけ）
   const [openId, setOpenId] = useState<string | null>(null);
+  // 外部ファイルのドラッグ中かどうか。枠線表示のみに使う
+  const [dropActive, setDropActive] = useState(false);
+
+  // 外部（エクスプローラ等）からのHTML5ドロップ受け入れ。カード並べ替え・フォルダ移動の既存D&D
+  // （SwipeableCard・dnd.ts）はpointerイベント系なので系統が別で競合しない
+  function onDragOver(e: React.DragEvent) {
+    if (!hasFiles(e.dataTransfer)) return;
+    e.preventDefault();
+    setDropActive(true);
+  }
+  function onDragLeave(e: React.DragEvent) {
+    if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+    setDropActive(false);
+  }
+  function onDrop(e: React.DragEvent) {
+    if (!hasFiles(e.dataTransfer)) return;
+    e.preventDefault();
+    setDropActive(false);
+    p.onDropFiles(filesFromDataTransfer(e.dataTransfer));
+  }
 
   // 通知未読のメモid集合。カードの赤点表示用（未読はTask 3のunreadテーブル・端末ローカル）
   const unreadIds = useLiveQuery(
@@ -76,7 +100,12 @@ export function NoteList(p: Props) {
   };
 
   return (
-    <div className={`list screen ${p.slideClass}`}>
+    <div
+      className={`list screen ${p.slideClass}${dropActive ? " file-drop-active" : ""}`}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+    >
       <div className="list-header">
         {p.syncBar}
         <div className="toolbar">
