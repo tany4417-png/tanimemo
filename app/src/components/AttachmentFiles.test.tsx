@@ -94,4 +94,88 @@ describe("AttachmentFiles", () => {
       }
     });
   });
+
+  // 2026-07-26 レビュー指摘（I-1修正が持ち込んだ後退）の回帰: キャッシュ走査effectがmetas依存で、
+  // liveQueryは内容不変でも書き込みのたびに新しい配列を返す。以前はそのたびに無条件で
+  // createObjectURLし直しており、使われないURLがrevokeされずに積み上がっていた
+  describe("blob URLの後始末が漏れない（I-1の後退修正）", () => {
+    it("liveQueryが再発火して中身が実質同じでもURLを二重生成しない", async () => {
+      await db.attachments.add({ ...base, id: "L1", mime: "application/pdf", name: "leak.pdf" });
+      await db.attachmentBlobs.add({ id: "L1", blob: new Blob([new Uint8Array([1])], { type: "application/pdf" }) });
+      render(<AttachmentFiles noteId="N1" />);
+      await vi.waitFor(() => expect(screen.getByRole("link", { name: "leak.pdfを開く" })).toBeTruthy());
+
+      const createSpy = vi.spyOn(URL, "createObjectURL");
+      const revokeSpy = vi.spyOn(URL, "revokeObjectURL");
+      try {
+        // 同じメモに画像添付が増える＝attachmentsテーブルへの書き込みでliveQueryは再発火するが、
+        // AttachmentFilesが表示する非画像リスト（metas）の中身自体は変わらない（画像は
+        // フィルタで除外される）。それでも配列は新しい参照になるため、effectはmetas依存で再実行される
+        await db.attachments.add({ ...base, id: "IMG1", mime: "image/png", name: "photo.png" });
+        await new Promise((r) => setTimeout(r, 20));
+
+        expect(createSpy).not.toHaveBeenCalled();
+        expect(revokeSpy).not.toHaveBeenCalled();
+      } finally {
+        createSpy.mockRestore();
+        revokeSpy.mockRestore();
+      }
+    });
+
+    it("添付が削除されると対応するURLがrevokeされる", async () => {
+      await db.attachments.add({ ...base, id: "L2", mime: "application/pdf", name: "del.pdf" });
+      await db.attachmentBlobs.add({ id: "L2", blob: new Blob([new Uint8Array([1])], { type: "application/pdf" }) });
+      render(<AttachmentFiles noteId="N1" />);
+      await vi.waitFor(() => expect(screen.getByRole("link", { name: "del.pdfを開く" })).toBeTruthy());
+
+      const revokeSpy = vi.spyOn(URL, "revokeObjectURL");
+      try {
+        await db.attachments.update("L2", { deleted: 1 });
+        await vi.waitFor(() => expect(screen.queryByText("del.pdf")).toBeNull());
+        expect(revokeSpy).toHaveBeenCalledTimes(1);
+      } finally {
+        revokeSpy.mockRestore();
+      }
+    });
+
+    it("アンマウント時に残っているURLをrevokeする", async () => {
+      await db.attachments.add({ ...base, id: "L3", mime: "application/pdf", name: "unmount.pdf" });
+      await db.attachmentBlobs.add({ id: "L3", blob: new Blob([new Uint8Array([1])], { type: "application/pdf" }) });
+      const { unmount } = render(<AttachmentFiles noteId="N1" />);
+      await vi.waitFor(() => expect(screen.getByRole("link", { name: "unmount.pdfを開く" })).toBeTruthy());
+
+      const revokeSpy = vi.spyOn(URL, "revokeObjectURL");
+      try {
+        unmount();
+        expect(revokeSpy).toHaveBeenCalledTimes(1);
+      } finally {
+        revokeSpy.mockRestore();
+      }
+    });
+
+    it("未キャッシュ添付を押下取得したURLも、削除されればrevokeされる（ensureUrl経由もurlMapで一元管理）", async () => {
+      await db.attachments.add({ ...base, id: "L4", mime: "application/pdf", name: "fetched.pdf" });
+      const fetchSpy = vi.fn(
+        async () => new Response(new Uint8Array([1]), { headers: { "Content-Type": "application/pdf" } })
+      );
+      vi.stubGlobal("fetch", fetchSpy);
+      try {
+        render(<AttachmentFiles noteId="N1" />);
+        const btn = await screen.findByRole("button", { name: "fetched.pdfを開く" });
+        btn.click();
+        await vi.waitFor(() => expect(screen.getByRole("link", { name: "fetched.pdfを開く" })).toBeTruthy());
+
+        const revokeSpy = vi.spyOn(URL, "revokeObjectURL");
+        try {
+          await db.attachments.update("L4", { deleted: 1 });
+          await vi.waitFor(() => expect(screen.queryByText("fetched.pdf")).toBeNull());
+          expect(revokeSpy).toHaveBeenCalledTimes(1);
+        } finally {
+          revokeSpy.mockRestore();
+        }
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+  });
 });

@@ -1,6 +1,7 @@
 import { SELF, env } from "cloudflare:test";
 import { describe, it, expect, afterEach } from "vitest";
 import { MAX_ATTACHMENT_BYTES } from "../src/attachments";
+import { MAX_SHARE_REQUEST_BYTES } from "../src/share";
 
 const TOKEN = { Authorization: "Bearer test-token" };
 
@@ -60,6 +61,17 @@ describe("/api/share", () => {
     const res = await SELF.fetch("https://example.com/api/share", { method: "POST", headers: TOKEN, body: new FormData() });
     expect(res.status).toBe(400);
   });
+
+  it("リクエスト全体が明らかに大きすぎる場合はformData解析前に413で弾く（2026-07-26 レビュー指摘: OOM保護）", async () => {
+    const huge = new Uint8Array(MAX_SHARE_REQUEST_BYTES + 1);
+    const form = new FormData();
+    form.append("file", new File([huge], "huge.pdf", { type: "application/pdf" }));
+    const res = await SELF.fetch("https://example.com/api/share", { method: "POST", headers: TOKEN, body: form });
+    expect(res.status).toBe(413);
+    // formData()自体を解析していない＝noteも作られていないことの確認
+    const data = await pull();
+    expect(data.notes).toHaveLength(0);
+  }, 30000);
 
   it("上限(50MB)を超えるファイルは弾かれ、他の正常なファイルは保存される", async () => {
     const form = new FormData();

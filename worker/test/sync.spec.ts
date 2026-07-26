@@ -319,10 +319,16 @@ describe("/api/sync", () => {
     // runSyncは常にPUT（blob）→POST（name付きメタ）の順で送る。PUTがメタ行を現在時刻で
     // 先に作ると、直後のPOSTが送るクライアント時刻のupdatedAtがそれを上回れずLWWで負け、
     // nameがNULLのまま返り続けていた（同期後に添付名が消える実バグ）
+    //
+    // clientNowはPUTより前（かつ明確に過去）の時刻にする（2026-07-26 レビュー指摘・歯のあるテストに
+    // 修正）。実際のrunSyncでは添付作成〜3秒デバウンス〜同期実行という時間差があるため、
+    // クライアントのupdatedAtは同期時点より必ず過去になる。ここをDate.now()のまま（PUTの後）に
+    // すると、修正前の実装（保険行のupdated_at=PUT時刻）でもclientNow > PUT時刻を満たしてしまい
+    // LWWが素通りするため、バグが再発してもこのテストは検出できない
+    const clientNow = Date.now() - 5000;
     await SELF.fetch("https://example.com/api/attachments/NAMEATT?noteId=N1", {
       method: "PUT", headers: { Authorization: "Bearer test-token", "Content-Type": "application/pdf" }, body: new Uint8Array([1, 2, 3]),
     });
-    const clientNow = Date.now();
     const res = await sync({
       since: 0, notes: [],
       attachments: [{

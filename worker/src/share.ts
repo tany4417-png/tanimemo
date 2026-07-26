@@ -3,7 +3,20 @@ import type { Env } from "./index";
 import { MAX_ATTACHMENT_BYTES } from "./attachments";
 import { upsertAttachment, upsertNote } from "./sync";
 
+// リクエスト全体（multipart/form-data）の上限（2026-07-26 レビュー指摘）。
+// 個々のファイルの上限（下のf.sizeチェック）だけでは、その前段のreq.formData()自体がリクエスト
+// 全体をメモリに展開してパースするため、Workerのメモリ上限(128MB)への接近を防げていなかった。
+// 「最大サイズのファイル2つぶん＋multipartのboundary/ヘッダ等のオーバーヘッド余裕(1MB)」を目安に、
+// 128MBより十分低いところで「明らかに大きすぎる」リクエストだけをformData()解析前に弾く。
+// この線を超えない範囲であれば、個々のファイルが上限超過でもスキップして残りを保存する
+// 既存の挙動（下のf.sizeチェック）はそのまま
+export const MAX_SHARE_REQUEST_BYTES = MAX_ATTACHMENT_BYTES * 2 + 1024 * 1024;
+
 export async function handleShare(req: Request, env: Env): Promise<Response> {
+  // Content-Lengthで明らかな超過をformData()解析前に弾く。ヘッダが無い/信用できない場合は
+  // ここでは弾かない（誤検知でリクエストを止めないため。formData()以降は従来どおり）
+  const contentLength = Number(req.headers.get("Content-Length") ?? "0");
+  if (contentLength > MAX_SHARE_REQUEST_BYTES) return new Response("too large", { status: 413 });
   const form = await req.formData();
   const text = form.get("text");
   const files = form.getAll("file").filter((f): f is File => f instanceof File);
