@@ -53,16 +53,6 @@ export async function handleShare(req: Request, env: Env): Promise<Response> {
   const contentLength = Number(req.headers.get("Content-Length") ?? "0");
   if (contentLength > MAX_SHARE_REQUEST_BYTES) return new Response("too large", { status: 413 });
   const form = await req.formData();
-  // 一時的な診断ログ（2026-07-26 iOSショートカットから届かない件の切り分け用）。
-  // キー名と型・サイズだけを出す。中身は出さない
-  console.log(
-    "share:",
-    JSON.stringify(
-      [...form.entries()].map(([k, v]) =>
-        v instanceof File ? `${k}=File(type=${v.type || "none"},size=${v.size},name=${v.name || "none"})` : `${k}=string(${String(v).length}chars)`
-      )
-    )
-  );
   const text = form.get("text");
   const files = form.getAll("file").filter((f): f is File => f instanceof File);
 
