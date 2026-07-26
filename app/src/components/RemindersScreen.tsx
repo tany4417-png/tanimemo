@@ -30,13 +30,23 @@ type Props = {
 export function RemindersScreen({ syncBar, slideClass, onOpenNote, onBack, onCreate, onDelete, onCreateAt }: Props) {
   // スワイプで削除ボタンが開いている行のid（NoteListと同じcontrolledパターン・開けるのは同時に1枚だけ）
   const [openId, setOpenId] = useState<string | null>(null);
-  // 表示モード（一覧/暦）。選択はlocalStorageに残し、次回開いたときも同じ表示から始める
-  const [mode, setMode] = useState<"list" | "calendar">(
-    () => (localStorage.getItem(VIEW_KEY) === "calendar" ? "calendar" : "list")
-  );
+  // 表示モード（一覧/暦）。選択はlocalStorageに残し、次回開いたときも同じ表示から始める。
+  // getItemはレンダー中（遅延初期化）に呼ぶため、プライベートブラウズ等で例外を投げる環境でも
+  // 画面ごとクラッシュしないようtry/catchで包み既定の"list"にフォールバックする（invite.tsと同じ作法）
+  const [mode, setMode] = useState<"list" | "calendar">(() => {
+    try {
+      return localStorage.getItem(VIEW_KEY) === "calendar" ? "calendar" : "list";
+    } catch {
+      return "list";
+    }
+  });
   function switchMode(next: "list" | "calendar") {
     setMode(next);
-    localStorage.setItem(VIEW_KEY, next);
+    try {
+      localStorage.setItem(VIEW_KEY, next);
+    } catch {
+      // 保存できなくても表示切替自体は成立させる（次回開いたときに既定へ戻るだけで許容する）
+    }
   }
   // 通知未読のメモid集合。行の赤点表示用（NoteListのカード赤点と同じ見た目）
   const unreadIds = useLiveQuery(
@@ -71,7 +81,6 @@ export function RemindersScreen({ syncBar, slideClass, onOpenNote, onBack, onCre
             <BackIcon />
           </button>
           <h2>リマインダー</h2>
-          <span className="spacer" />
           <span className="seg">
             <button className={mode === "list" ? "on" : undefined} onClick={() => switchMode("list")}>一覧</button>
             <button className={mode === "calendar" ? "on" : undefined} onClick={() => switchMode("calendar")}>暦</button>

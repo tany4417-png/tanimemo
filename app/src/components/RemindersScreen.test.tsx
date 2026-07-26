@@ -109,4 +109,18 @@ describe("RemindersScreen", () => {
     render(<RemindersScreen {...screenProps} onOpenNote={() => {}} onBack={() => {}} />);
     await vi.waitFor(() => expect(document.querySelectorAll(".cal-cell").length).toBe(42));
   });
+  it("localStorageが読めない環境でも落ちずに一覧表示で開ける", async () => {
+    // プライベートブラウズ等、getItemが例外を投げる環境を模す（getItemはレンダー中の遅延初期化で呼ばれる）
+    const spy = vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new Error("denied");
+    });
+    try {
+      render(<RemindersScreen {...screenProps} onOpenNote={() => {}} onBack={() => {}} />);
+    } finally {
+      spy.mockRestore();
+    }
+    // クラッシュせず既定の一覧表示になる（暦セルは出ない・一覧が選択状態）
+    expect(document.querySelectorAll(".cal-cell").length).toBe(0);
+    expect(screen.getByRole("button", { name: "一覧" }).className).toContain("on");
+  });
 });
