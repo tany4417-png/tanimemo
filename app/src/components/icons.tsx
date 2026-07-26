@@ -161,3 +161,21 @@ export function DownloadIcon({ size = 24, className }: IconProps) {
     </svg>
   );
 }
+
+// 山形・左（カレンダーの前の月へ）
+export function ChevronLeftIcon({ size = 24, className }: IconProps) {
+  return (
+    <svg width={size} height={size} className={className} {...common}>
+      <polyline points="15 5 8 12 15 19" />
+    </svg>
+  );
+}
+
+// 山形・右（カレンダーの次の月へ）
+export function ChevronRightIcon({ size = 24, className }: IconProps) {
+  return (
+    <svg width={size} height={size} className={className} {...common}>
+      <polyline points="9 5 16 12 9 19" />
+    </svg>
+  );
+}
