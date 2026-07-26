@@ -4,7 +4,7 @@ import { buildMonthCells, monthRange } from "./calendar";
 import { accentClassFor } from "./colors";
 
 const note = (over: Partial<Parameters<typeof buildMonthCells>[2][number]> = {}) => ({
-  id: "N1", body: "高橋工務店 訪問\n2行目", folderId: null, remindAt: null, repeatRule: null, ...over,
+  id: "N1", body: "サンプル工務店 訪問\n2行目", folderId: null, remindAt: null, repeatRule: null, ...over,
 });
 
 describe("monthRange", () => {
@@ -34,7 +34,7 @@ describe("buildMonthCells", () => {
     const cells = buildMonthCells(2026, 7, [note({ remindAt: at })], new Map(), now);
     const cell = cells.find((c) => c.day === 12 && c.inMonth)!;
     expect(cell.items).toHaveLength(1);
-    expect(cell.items[0].title).toBe("高橋工務店 訪問");
+    expect(cell.items[0].title).toBe("サンプル工務店 訪問");
     expect(cell.items[0].at).toBe(at);
   });
 

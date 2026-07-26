@@ -6,3 +6,5 @@ dist/
 worker/wrangler.*.jsonc
 docs/*.local.md
 docs-local-token.txt
+# 設計・計画・レビューの作業場（ローカル限定）。ブレストサーバーのトークン等が入るのでPublicリポジトリに出さない
+.superpowers/
