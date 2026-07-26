@@ -97,6 +97,17 @@ export async function handleShare(req: Request, env: Env): Promise<Response> {
     }
     attachments.push(f);
   }
+  // ショートカット側でキーと値を取り違えている場合の救済（2026-07-26 実機ログで確認）。
+  // 「キー欄に変数（＝共有された本文やURL）」「値欄に text という固定文字列」という設定でも、
+  // 送られた内容を捨てずに本文として拾う。正しい設定なら上の分岐で拾えるのでここには来ない
+  if (bodyParts.length === 0 && attachments.length === 0) {
+    for (const [k, v] of form.entries()) {
+      if (typeof v !== "string") continue;
+      const looksLikeFieldName = v.trim() === "text" || v.trim() === "file";
+      const s = k.trim();
+      if (looksLikeFieldName && s.length > 8 && !hasControlChars(s)) bodyParts.push(s);
+    }
+  }
   if (bodyParts.length === 0 && attachments.length === 0) return new Response("empty", { status: 400 });
 
   const now = Date.now();

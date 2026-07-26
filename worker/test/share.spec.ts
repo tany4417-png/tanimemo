@@ -189,6 +189,26 @@ describe("/api/share", () => {
     expect(data.attachments.filter((a: any) => a.noteId === noteId)).toHaveLength(1);
   });
 
+  // ショートカット側でキーと値を取り違えた設定（キー欄に変数、値欄に "text"）の救済
+  it("キーと値が入れ替わって届いても本文として拾う", async () => {
+    const form = new FormData();
+    form.append("https://x.com/someone/status/2081218082568372352?s=12", "text");
+    const res = await SELF.fetch("https://example.com/api/share", { method: "POST", headers: TOKEN, body: form });
+    expect(res.status).toBe(200);
+    const { noteId } = (await res.json()) as any;
+    const data = await pull();
+    expect(data.notes.find((n: any) => n.id === noteId).body).toBe("https://x.com/someone/status/2081218082568372352?s=12");
+  });
+
+  it("正しい設定のときは救済分岐に落ちない（本文が二重にならない）", async () => {
+    const form = new FormData();
+    form.append("text", "https://example.com/a");
+    const res = await SELF.fetch("https://example.com/api/share", { method: "POST", headers: TOKEN, body: form });
+    const { noteId } = (await res.json()) as any;
+    const data = await pull();
+    expect(data.notes.find((n: any) => n.id === noteId).body).toBe("https://example.com/a");
+  });
+
   it("テキストとファイルが同時に届いたら本文と添付の両方になる", async () => {
     const form = new FormData();
     form.append("text", "コメント");
