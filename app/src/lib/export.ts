@@ -38,7 +38,7 @@ export function noteContent(n: Note, folderPathStr = ""): string {
 export async function exportZip(
   token = "",
   fetchFn: typeof fetch = fetch
-): Promise<{ blob: Blob; missingImages: number }> {
+): Promise<{ blob: Blob; missingFiles: number }> {
   const files: Record<string, Uint8Array> = {};
   const notes = (await db.notes.toArray()).filter((n) => n.deleted === 0);
   for (const n of notes) {
@@ -47,7 +47,9 @@ export async function exportZip(
     files[notePath(n)] = strToU8(noteContent(n, folderPathStr));
   }
   const atts = (await db.attachments.toArray()).filter((a) => a.deleted === 0);
-  let missingImages = 0;
+  // 画像・非画像を問わずカウントする（旧名missingImagesの名残: 非画像添付も同じカウンタで
+  // 数えるようになったため、変数名も文言も実態に合わせてmissingFilesにした）
+  let missingFiles = 0;
   for (const a of atts) {
     const rec = await db.attachmentBlobs.get(a.id);
     let blob = rec?.blob ?? null;
@@ -58,8 +60,8 @@ export async function exportZip(
       const dir = isImageMime(a.mime) ? "images" : "files";
       files[`${dir}/${a.id}.${ext}`] = new Uint8Array(await blob.arrayBuffer());
     } else {
-      missingImages += 1;
+      missingFiles += 1;
     }
   }
-  return { blob: new Blob([zipSync(files)], { type: "application/zip" }), missingImages };
+  return { blob: new Blob([zipSync(files)], { type: "application/zip" }), missingFiles };
 }

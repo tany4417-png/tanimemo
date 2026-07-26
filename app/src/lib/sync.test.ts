@@ -208,6 +208,46 @@ describe("runSync", () => {
   });
 });
 
+describe("runSync 添付のpull適用はマージ（2026-07-26 実バグ）", () => {
+  it("サーバーがnameを省いても、ローカルの添付nameは消えない", async () => {
+    await db.attachments.put({
+      id: "ATT1", noteId: "N1", mime: "application/pdf", size: 10, name: "見積書.pdf",
+      createdAt: 100, updatedAt: 100, deleted: 0, dirty: 0,
+    });
+    // サーバーはname===NULLの行をフィールドごと省いて返す（worker/src/sync.ts参照）
+    const incoming = { id: "ATT1", noteId: "N1", mime: "application/pdf", size: 10, createdAt: 100, updatedAt: 200, deleted: 0 as const };
+    const { f } = okFetch({ attachments: [incoming] });
+    await runSync("tok", f);
+    const cur = await db.attachments.get("ATT1");
+    expect(cur?.name).toBe("見積書.pdf");
+    // サーバーが返したフィールドはちゃんと更新される（マージが単なる無視になっていないことの確認）
+    expect(cur?.updatedAt).toBe(200);
+    expect(cur?.size).toBe(10);
+  });
+
+  it("curが無い（新規受信）ときもマージで正しく保存される", async () => {
+    const incoming = { id: "NEW1", noteId: "N1", mime: "image/png", size: 5, name: "写真.png", createdAt: 1, updatedAt: 1, deleted: 0 as const };
+    const { f } = okFetch({ attachments: [incoming] });
+    await runSync("tok", f);
+    const cur = await db.attachments.get("NEW1");
+    expect(cur?.name).toBe("写真.png");
+    expect(cur?.dirty).toBe(0);
+  });
+
+  it("サーバーが必ず送るdeleted/updatedAtはマージでも壊れず反映される", async () => {
+    await db.attachments.put({
+      id: "ATT2", noteId: "N1", mime: "image/png", size: 3, name: "写真.png",
+      createdAt: 100, updatedAt: 100, deleted: 0, dirty: 0,
+    });
+    const incoming = { id: "ATT2", noteId: "N1", mime: "image/png", size: 3, createdAt: 100, updatedAt: 200, deleted: 1 as const };
+    const { f } = okFetch({ attachments: [incoming] });
+    await runSync("tok", f);
+    const cur = await db.attachments.get("ATT2");
+    expect(cur?.deleted).toBe(1);
+    expect(cur?.updatedAt).toBe(200);
+  });
+});
+
 describe("runSync 全量再同期（fullResyncV4）", () => {
   it("旧バージョンからの更新直後（fullResyncV4フラグが無い）はsince=0で送り、成功後にフラグが立つ", async () => {
     const { f, calls } = okFetch();

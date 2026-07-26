@@ -1,5 +1,6 @@
 import { SELF, env } from "cloudflare:test";
 import { describe, it, expect, afterEach } from "vitest";
+import { MAX_ATTACHMENT_BYTES } from "../src/attachments";
 
 const TOKEN = { Authorization: "Bearer test-token" };
 
@@ -58,6 +59,17 @@ describe("/api/share", () => {
   it("空のフォームは400", async () => {
     const res = await SELF.fetch("https://example.com/api/share", { method: "POST", headers: TOKEN, body: new FormData() });
     expect(res.status).toBe(400);
+  });
+
+  it("上限(50MB)を超えるファイルは弾かれ、他の正常なファイルは保存される", async () => {
+    const form = new FormData();
+    form.append("file", new File([new Uint8Array(MAX_ATTACHMENT_BYTES + 1)], "big.pdf", { type: "application/pdf" }));
+    form.append("file", new File([new Uint8Array([1, 2, 3])], "ok.pdf", { type: "application/pdf" }));
+    const res = await SELF.fetch("https://example.com/api/share", { method: "POST", headers: TOKEN, body: form });
+    expect(res.status).toBe(200);
+    const data = await pull();
+    expect(data.attachments).toHaveLength(1);
+    expect(data.attachments[0].size).toBe(3);
   });
 
   it("CRLFはLFに正規化される", async () => {

@@ -280,6 +280,10 @@ export default function App() {
         const n = await createNote("", currentFolderId);
         const rejected = await addAttachments(n.id, files);
         if (rejected > 0) alert(rejectedMessage(rejected));
+        // 全件が上限超過で1件も添付できなかった場合、本文も添付も無い空メモが残ってしまう。
+        // この経路は「戻る」を通らないためdiscardIfEmptyNewが自動では走らず、無言で空カードが
+        // 一覧に増える（2026-07-26 実バグ）。作った直後にその場で後始末する
+        if (rejected === files.length) await discardIfEmptyNew(n.id, { preferTrash: syncing.current });
         scheduleSync();
         return;
       }
@@ -386,6 +390,8 @@ export default function App() {
       const n = await createNote("", currentFolderId);
       const rejected = await addAttachments(n.id, files);
       if (rejected > 0) alert(rejectedMessage(rejected));
+      // onPasteと同じ後始末（2026-07-26 実バグ）: 全件上限超過だと空メモが残るため、その場で消す
+      if (rejected === files.length) await discardIfEmptyNew(n.id, { preferTrash: syncing.current });
       scheduleSync();
     },
     [currentFolderId, scheduleSync]
@@ -902,9 +908,9 @@ export default function App() {
           }}
           onBack={navigateBack}
           onExport={async () => {
-            const { blob, missingImages } = await exportZip(token);
-            if (missingImages > 0) {
-              alert(`未取得の画像 ${missingImages}件はこの端末に無いため含まれていません`);
+            const { blob, missingFiles } = await exportZip(token);
+            if (missingFiles > 0) {
+              alert(`未取得の添付 ${missingFiles}件はこの端末に無いため含まれていません`);
             }
             const a = document.createElement("a");
             a.href = URL.createObjectURL(blob);
@@ -951,9 +957,10 @@ export default function App() {
             setView({ name: "note", id: n.id, isNew: true, withReminder: true });
           }}
           onCreateAt={async (atMs) => {
-            // カレンダーの日付から作る通知付きメモ。選んだ日の9:00を入れた状態でシートを開く
-            const n = await createNote("", null);
-            await updateNote(n.id, { remindAt: atMs, repeatRule: null });
+            // カレンダーの日付から作る通知付きメモ。選んだ日の9:00を入れた状態でシートを開く。
+            // remindAtは作成と同じ1トランザクションで書く（createNote→updateNoteの2段だと、
+            // その間にliveQueryが発火してremindAt: nullの状態でNoteScreenが開きうる・2026-07-26 実バグ）
+            const n = await createNote("", null, { remindAt: atMs, repeatRule: null });
             setNavDirection("forward");
             setSuppressSlideIn(true);
             setView({ name: "note", id: n.id, isNew: true, withReminder: true });

@@ -118,7 +118,11 @@ export async function runSync(
     }
     for (const a of data.attachments) {
       const cur = await db.attachments.get(a.id);
-      if (!cur || a.updatedAt >= cur.updatedAt) await db.attachments.put({ ...a, dirty: 0 });
+      // 置換ではなくマージにする（2026-07-26 実バグ）: サーバーはname===NULLの行をフィールドごと
+      // 省いて返す（worker/src/sync.tsのhandleSync参照）。丸ごとputで置換すると、サーバーが省いた
+      // フィールドのローカル値（例: 添付名）が消えてしまう。curを先に展開しaを後から重ねることで、
+      // サーバーが明示的に返したフィールドだけが上書きされ、省かれたフィールドはローカルの値を保つ
+      if (!cur || a.updatedAt >= cur.updatedAt) await db.attachments.put({ ...cur, ...a, dirty: 0 });
     }
     for (const fl of folders) {
       const cur = await db.folders.get(fl.id);

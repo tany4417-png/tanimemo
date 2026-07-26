@@ -315,6 +315,30 @@ describe("/api/sync", () => {
     expect(after?.orderKey).toBe(5);
   });
 
+  it("PUT→POSTの実際の順序で送ってもnameが消えない（2026-07-26 実バグ: PUTの保険行がPOSTのLWWに勝っていた）", async () => {
+    // runSyncは常にPUT（blob）→POST（name付きメタ）の順で送る。PUTがメタ行を現在時刻で
+    // 先に作ると、直後のPOSTが送るクライアント時刻のupdatedAtがそれを上回れずLWWで負け、
+    // nameがNULLのまま返り続けていた（同期後に添付名が消える実バグ）
+    await SELF.fetch("https://example.com/api/attachments/NAMEATT?noteId=N1", {
+      method: "PUT", headers: { Authorization: "Bearer test-token", "Content-Type": "application/pdf" }, body: new Uint8Array([1, 2, 3]),
+    });
+    const clientNow = Date.now();
+    const res = await sync({
+      since: 0, notes: [],
+      attachments: [{
+        id: "NAMEATT", noteId: "N1", mime: "application/pdf", size: 3, name: "見積書.pdf",
+        createdAt: clientNow, updatedAt: clientNow, deleted: 0,
+      }],
+    });
+    // 同じ応答（POSTのpull）で既にnameが正しく返る
+    const data = await res.json() as any;
+    expect(data.attachments.find((a: any) => a.id === "NAMEATT")?.name).toBe("見積書.pdf");
+
+    // 続くpullでも消えない
+    const r2 = await (await sync({ since: 0, notes: [], attachments: [] })).json() as any;
+    expect(r2.attachments.find((a: any) => a.id === "NAMEATT")?.name).toBe("見積書.pdf");
+  });
+
   describe("reminder columns", () => {
     it("remindAt/repeatRuleを保存しpullで返す", async () => {
       await sync({ since: 0, notes: [note({ id: "r1", remindAt: 1800000000000, repeatRule: '{"type":"daily"}' })], attachments: [] });

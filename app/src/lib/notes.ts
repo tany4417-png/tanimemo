@@ -7,11 +7,20 @@ export type NotePatch = Partial<
   Pick<Note, "body" | "importance" | "deleted" | "folderId" | "orderKey" | "remindAt" | "repeatRule">
 >;
 
-export async function createNote(body = "", folderId: string | null = null): Promise<Note> {
+export async function createNote(
+  body = "",
+  folderId: string | null = null,
+  // 作成と同時にremindAt/repeatRuleを設定したい呼び出し用（例: カレンダーの日付から作る通知付きメモ）。
+  // 省略時は従来どおりnull（既存呼び出しと互換）。createNote→updateNoteの2トランザクションに分けると、
+  // その間にDexieのliveQueryが発火してremindAt: nullの状態が一瞬observableになり、その状態で
+  // ReminderSheetが初期化されると日時欄が空で開いてしまう（2026-07-26 実バグ）。1回のputで済ませて
+  // この窓を無くす
+  opts?: { remindAt?: number | null; repeatRule?: string | null }
+): Promise<Note> {
   const now = Date.now();
   const n: Note = {
     id: ulid(), body, importance: 0, createdAt: now, updatedAt: now, deleted: 0, dirty: 1, folderId, orderKey: null,
-    remindAt: null, repeatRule: null,
+    remindAt: opts?.remindAt ?? null, repeatRule: opts?.repeatRule ?? null,
   };
   await db.notes.put(n);
   return n;

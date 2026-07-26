@@ -1,5 +1,6 @@
 import { ulid } from "ulid";
 import type { Env } from "./index";
+import { MAX_ATTACHMENT_BYTES } from "./attachments";
 import { upsertAttachment, upsertNote } from "./sync";
 
 export async function handleShare(req: Request, env: Env): Promise<Response> {
@@ -15,6 +16,9 @@ export async function handleShare(req: Request, env: Env): Promise<Response> {
   await upsertNote(env.DB, { id: noteId, body, importance: 0, createdAt: now, updatedAt: now, deleted: 0, folderId: null });
 
   for (const f of files) {
+    // 上限超過分だけ弾いて残りは保存する（ショートカット経由は複数ファイルをまとめて送れるため、
+    // 1件のサイズ超過で他の正常なファイルまで巻き添えにしない）
+    if (f.size > MAX_ATTACHMENT_BYTES) continue;
     const attId = ulid();
     const mime = f.type || "application/octet-stream";
     // ショートカット経由ではファイル名が空のことがある。その場合はidの末尾で識別できる名前を作る
