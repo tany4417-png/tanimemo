@@ -152,6 +152,26 @@ describe("/api/share", () => {
     expect(data.attachments.filter((a: any) => a.noteId === noteId)).toHaveLength(1);
   });
 
+  // ショートカットのフォームフィールドは「テキスト」と「ファイル」の2種類があり、画面から見分けにくい。
+  // textキーにファイルとして届いた場合も本文として読む
+  it("textキーにファイルとして届いても本文になる", async () => {
+    const form = new FormData();
+    form.append("text", new File(["https://x.com/someone/status/123"], "input.txt", { type: "text/plain" }));
+    const res = await SELF.fetch("https://example.com/api/share", { method: "POST", headers: TOKEN, body: form });
+    expect(res.status).toBe(200);
+    const { noteId } = (await res.json()) as any;
+    const data = await pull();
+    expect(data.notes.find((n: any) => n.id === noteId).body).toBe("https://x.com/someone/status/123");
+    expect(data.attachments.filter((a: any) => a.noteId === noteId)).toHaveLength(0);
+  });
+
+  it("textキーに大きなファイルが来た場合は本文にしない（取り違え防止）", async () => {
+    const form = new FormData();
+    form.append("text", new File(["あ".repeat(3000)], "long.txt", { type: "text/plain" }));
+    const res = await SELF.fetch("https://example.com/api/share", { method: "POST", headers: TOKEN, body: form });
+    expect(res.status).toBe(400);
+  });
+
   it("テキストとファイルが同時に届いたら本文と添付の両方になる", async () => {
     const form = new FormData();
     form.append("text", "コメント");

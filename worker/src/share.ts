@@ -57,7 +57,15 @@ export async function handleShare(req: Request, env: Env): Promise<Response> {
   const files = form.getAll("file").filter((f): f is File => f instanceof File);
 
   const bodyParts: string[] = [];
-  if (typeof text === "string" && text.trim() !== "") bodyParts.push(text.trim());
+  if (typeof text === "string" && text.trim() !== "") {
+    bodyParts.push(text.trim());
+  } else if (text instanceof File && mayBeSharedText(text)) {
+    // iOSショートカットのフォームフィールドは「テキスト」と「ファイル」の2種類があり、
+    // どちらを選んでいるかが画面から分かりにくい。textキーにファイルとして届いても本文として読む
+    // （2026-07-26 オーナーがUI上で種類を切り替えられなかったため、サーバー側で吸収する）
+    const s = (await text.text()).trim();
+    if (s !== "" && !hasControlChars(s)) bodyParts.push(s);
+  }
   // fileとして届いた小さなテキスト（＝URL共有をファイル用ショートカットで受けた場合）は本文に回す
   const attachments: File[] = [];
   for (const f of files) {
