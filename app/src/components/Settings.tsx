@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
+import { formatBootProfile, loadBootProfile, type BootProfile } from "../lib/boot-profile";
 import { collectDiagnostics, type Diagnostics } from "../lib/diagnostics";
 import { disablePush, ensurePushSubscription, isPushEnabled, sendTestPush } from "../lib/push";
 import { BackIcon, ExportIcon, TrashIcon } from "./icons";
 
 // 診断パネルの表示・コピー用にテキスト整形する（コンポーネント専用の純関数のため単体テストは設けていない。
 // 集計自体はlib/diagnostics.tsのcollectDiagnosticsでテスト済み）
-function formatDiagnosticsText(d: Diagnostics): string {
+function formatDiagnosticsText(d: Diagnostics, boot: BootProfile | null): string {
   const lastSync = d.lastSync ? new Date(d.lastSync).toLocaleString("ja-JP") : "未同期";
   return [
     `バージョン: ${d.version}`,
@@ -17,6 +18,7 @@ function formatDiagnosticsText(d: Diagnostics): string {
     `添付: メタ${d.attachments.metaCount} / dirty${d.attachments.dirty} / ローカル実体${d.attachments.blobCount}`,
     `通知許可: ${d.notifyPermission}`,
     `通知購読: ${d.pushEnabled ? "有効" : "無効"}`,
+    boot ? formatBootProfile(boot) : "前回の起動: 記録なし",
   ].join("\n");
 }
 
@@ -34,6 +36,8 @@ type Props = {
 export function Settings({ syncBar, slideClass, token, onSave, onBack, onExport, onTrash }: Props) {
   const [value, setValue] = useState(token);
   const diagnostics = useLiveQuery(collectDiagnostics, [], null);
+  // 前回の起動プロファイル（保存済みの1回分）。起動が遅いときの調査用
+  const [bootProfile] = useState<BootProfile | null>(() => loadBootProfile());
   const [pushOn, setPushOn] = useState(false);
   const [pushMsg, setPushMsg] = useState("");
 
@@ -133,9 +137,10 @@ export function Settings({ syncBar, slideClass, token, onSave, onBack, onExport,
                 </p>
                 <p>通知許可: {diagnostics.notifyPermission}</p>
                 <p>通知購読: {diagnostics.pushEnabled ? "有効" : "無効"}</p>
+                <pre className="diag-boot">{bootProfile ? formatBootProfile(bootProfile) : "前回の起動: 記録なし"}</pre>
                 <button
                   className="tint acc-teal"
-                  onClick={() => void navigator.clipboard.writeText(formatDiagnosticsText(diagnostics))}
+                  onClick={() => void navigator.clipboard.writeText(formatDiagnosticsText(diagnostics, bootProfile))}
                 >
                   診断情報をコピー
                 </button>

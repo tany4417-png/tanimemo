@@ -28,6 +28,7 @@ import {
 } from "./lib/folders";
 import { shouldCompleteBack } from "./lib/gesture";
 import { saveToken } from "./lib/invite";
+import { finishBootProfile, markBoot, measureBoot } from "./lib/boot-profile";
 import { createNote, discardIfEmptyNew, listActiveNotes, purgeExpiredTrashLocal, restoreNote, softDeleteNote, sweepEmptyNewNotes, updateNote, type NotePatch } from "./lib/notes";
 import type { ReorderPlan } from "./lib/reorder";
 import { excludeReminders, searchNotes, sortNotes, type SortMode } from "./lib/sort";
@@ -127,7 +128,14 @@ export default function App() {
     dragScreenEl.current = null;
   }, []);
 
-  const notes = useLiveQuery(listActiveNotes, [], []);
+  const notes = useLiveQuery(async () => {
+    const list = await listActiveNotes();
+    markBoot("一覧の初回読み出し");
+    return list;
+  }, [], []);
+  // 起動プロファイルの保存でだけ使う。描画には関わらないのでrefで最新値を持つ
+  const notesRef = useRef(notes);
+  const bootProfileSaved = useRef(false);
   const pending = useLiveQuery(
     async () => (await db.notes.where("dirty").equals(1).count()) + (await db.attachments.where("dirty").equals(1).count()),
     [],
@@ -236,17 +244,32 @@ export default function App() {
   // エコーバック適用でdirty=0の空メモとして復活し、以後の掃除（dirty=1が条件）が二度と効かなくなるため。
   // このeffectはsyncNowを呼ぶeffect（直後）より前に宣言しておくこと（宣言順が入れ替わるとゲートが素通りになる）
   useEffect(() => {
+    markBoot("Appマウント");
     initCleanupRef.current = (async () => {
-      await sweepEmptyNewNotes();
-      await purgeExpiredTrashLocal();
-      await repairOrphansSafely();
+      await measureBoot("空メモ掃除", sweepEmptyNewNotes);
+      await measureBoot("ゴミ箱purge", purgeExpiredTrashLocal);
+      await measureBoot("孤児チェック", repairOrphansSafely);
     })().catch(() => {
       // 掃除に失敗しても同期は止めない。未実行の掃除は復活レースの前提が無く、機能追加前の挙動に戻るだけ
     });
   }, []);
 
   useEffect(() => {
-    void syncNow();
+    notesRef.current = notes;
+  });
+
+  // 初回同期まで測ったら1回だけ保存する。次の起動で設定画面の診断パネルから読める
+  useEffect(() => {
+    void syncNow().finally(() => {
+      markBoot("初回同期");
+      if (bootProfileSaved.current) return;
+      bootProfileSaved.current = true;
+      const list = notesRef.current;
+      finishBootProfile({
+        notes: list.length,
+        bodyChars: list.reduce((sum, n) => sum + n.body.length, 0),
+      });
+    });
   }, [syncNow]);
 
   useEffect(() => {

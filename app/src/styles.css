@@ -358,6 +358,8 @@ button.icon-btn.accent { border-color: var(--indigo); color: var(--indigo); }
 .diag summary { cursor: pointer; }
 .diag-body { display: flex; flex-direction: column; gap: 4px; padding-top: 8px; font-size: 13px; color: var(--ink-soft, var(--neutral)); }
 .diag-body button { align-self: flex-start; margin-top: 4px; }
+/* 前回の起動プロファイル。等幅で桁を揃え、長い行は折り返す（横スクロールを作らない） */
+.diag-boot { margin: 0; font: inherit; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; white-space: pre-wrap; word-break: break-word; }
 
 .trash-note { font-size: 0.85rem; color: var(--ink-soft); }
 .trash-card button { margin-top: 6px; }

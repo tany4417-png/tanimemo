@@ -3,6 +3,10 @@ import { createRoot } from 'react-dom/client'
 import './styles.css'
 import App from './App.tsx'
 import { applyInviteOnBoot, watchInviteHash } from './lib/invite.ts'
+import { startBootProfile } from './lib/boot-profile.ts'
+
+// 起動計測の基準点。以降のmarkBoot/measureBootはここからの経過を測る
+startBootProfile()
 
 // ピンチズーム無効化（アプリ型UI。viewportメタとCSS touch-actionに加えた保険。
 // iOS SafariはgesturestartのpreventDefaultでピンチを止められる）
