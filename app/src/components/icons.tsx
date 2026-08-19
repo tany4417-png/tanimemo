@@ -179,3 +179,22 @@ export function ChevronRightIcon({ size = 24, className }: IconProps) {
     </svg>
   );
 }
+
+// コピー（2枚重ねの紙）
+export function CopyIcon({ size = 24, className }: IconProps) {
+  return (
+    <svg width={size} height={size} className={className} {...common}>
+      <rect x="9" y="9" width="11" height="11" rx="2" />
+      <path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1" />
+    </svg>
+  );
+}
+
+// チェック（コピー完了の合図）
+export function CheckIcon({ size = 24, className }: IconProps) {
+  return (
+    <svg width={size} height={size} className={className} {...common}>
+      <polyline points="4 12.5 9.5 18 20 6" />
+    </svg>
+  );
+}

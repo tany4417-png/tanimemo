@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 /// <reference types="node" />
-import { describe, it, expect, beforeEach, vi } from "vitest";
-import { render, screen, fireEvent, createEvent } from "@testing-library/react";
+import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
+import { act, render, screen, fireEvent, createEvent } from "@testing-library/react";
 import { Blob as NodeBlob, File as NodeFile } from "node:buffer";
 import { NoteScreen } from "./NoteScreen";
 import { db, resetDbForTests } from "../lib/db";
@@ -95,5 +95,55 @@ describe("NoteScreen 外部ファイルのドロップ", () => {
     await vi.waitFor(async () => {
       expect(await db.attachments.where("noteId").equals(note.id).count()).toBe(1);
     });
+  });
+});
+
+describe("NoteScreen の全文コピー", () => {
+  function stubClipboard(writeText: (t: string) => Promise<void>) {
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+  }
+
+  afterEach(() => {
+    Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true });
+    vi.useRealTimers();
+  });
+
+  it("閲覧中に押すと本文が1行目のタイトルごとコピーされる", async () => {
+    const copied: string[] = [];
+    stubClipboard(async (t) => { copied.push(t); });
+    const long = { ...note, body: "見出し\n本文1行目\n本文2行目" };
+    render(<NoteScreen {...props} note={long} />);
+    fireEvent.click(screen.getByLabelText("全文をコピー"));
+    await screen.findByLabelText("コピーしました");
+    expect(copied).toEqual(["見出し\n本文1行目\n本文2行目"]);
+  });
+
+  it("編集中は保存前の入力内容がコピーされる", async () => {
+    const copied: string[] = [];
+    stubClipboard(async (t) => { copied.push(t); });
+    render(<NoteScreen {...props} startEditing />);
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "打ちかけの本文" } });
+    fireEvent.click(screen.getByLabelText("全文をコピー"));
+    await screen.findByLabelText("コピーしました");
+    expect(copied).toEqual(["打ちかけの本文"]);
+  });
+
+  it("コピーに失敗したらその旨を表示する", async () => {
+    stubClipboard(async () => { throw new Error("NotAllowedError"); });
+    render(<NoteScreen {...props} />);
+    fireEvent.click(screen.getByLabelText("全文をコピー"));
+    await screen.findByLabelText("コピーできませんでした");
+  });
+
+  it("表示は2秒で元のラベルに戻る", async () => {
+    vi.useFakeTimers();
+    stubClipboard(async () => {});
+    render(<NoteScreen {...props} />);
+    fireEvent.click(screen.getByLabelText("全文をコピー"));
+    // copyTextのPromise解決をmicrotaskで進める（fake timers下ではfindByが使えない）
+    await act(async () => {});
+    expect(screen.getByLabelText("コピーしました")).toBeTruthy();
+    await act(async () => { vi.advanceTimersByTime(2000); });
+    expect(screen.getByLabelText("全文をコピー")).toBeTruthy();
   });
 });

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { addAttachments, rejectedMessage } from "../lib/attachments";
+import { copyText } from "../lib/clipboard";
 import { accentClassFor } from "../lib/colors";
 import { filesFromDataTransfer, hasFiles } from "../lib/filedrop";
 import { flattenFolderTree, listAllFolders } from "../lib/folders";
@@ -9,7 +10,7 @@ import { highlightMatches } from "../lib/highlight";
 import { renderMarkdown, toggleCheckbox } from "../lib/markdown";
 import type { Note } from "../lib/types";
 import { AttachmentFiles } from "./AttachmentFiles";
-import { BackIcon, BellIcon, ClipIcon, CloseIcon, ImageIcon, RedoIcon, UndoIcon } from "./icons";
+import { BackIcon, BellIcon, CheckIcon, ClipIcon, CloseIcon, CopyIcon, ImageIcon, RedoIcon, UndoIcon } from "./icons";
 import { ImageOverlay, onImageDragStart } from "./ImageOverlay";
 import { ReminderSheet } from "./ReminderSheet";
 import { useAttachmentUrls } from "./useAttachmentUrls";
@@ -18,6 +19,8 @@ import { useAttachmentUrls } from "./useAttachmentUrls";
 const HISTORY_COALESCE_MS = 600;
 // 自動保存のデバウンス（ms）。入力がこの間隔だけ途切れたら未保存のdraftをDBへ書く
 const AUTOSAVE_MS = 600;
+// 全文コピーの結果をボタン上に出しておく時間（ms）。アプリにトースト機構が無いのでボタン自身で知らせる
+const COPY_FEEDBACK_MS = 2000;
 
 type Props = {
   syncBar: React.ReactNode;
@@ -55,6 +58,9 @@ export function NoteScreen({ syncBar, slideClass, note, startEditing, startWithR
   const [reminderOpen, setReminderOpen] = useState(startWithReminder ?? false);
   // 外部（エクスプローラ等）からのファイルドロップ中かどうか。枠線表示のみに使う
   const [dropActive, setDropActive] = useState(false);
+  // 全文コピーの結果表示。ok/ngをCOPY_FEEDBACK_MSだけ出してidleへ戻す
+  const [copyState, setCopyState] = useState<"idle" | "ok" | "ng">("idle");
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const html = useMemo(() => renderMarkdown(note.body), [note.body]);
   // dangerouslySetInnerHTMLに渡す{__html}はオブジェクトごとメモ化する。React 19は参照が変わると
   // 文字列が同値でもinnerHTMLを再設定するため、インライン生成だと無関係な再レンダー（allFolders到着等）で
@@ -90,6 +96,7 @@ export function NoteScreen({ syncBar, slideClass, note, startEditing, startWithR
   useEffect(() => {
     return () => {
       if (coalesceTimer.current) clearTimeout(coalesceTimer.current);
+      if (copyTimerRef.current != null) clearTimeout(copyTimerRef.current);
     };
   }, []);
 
@@ -201,6 +208,14 @@ export function NoteScreen({ syncBar, slideClass, note, startEditing, startWithR
     setDraft(h.present);
     setHistoryTick((v) => v + 1);
     textareaRef.current?.focus();
+  }
+
+  // 全文コピー。編集中は保存前のdraft、閲覧中はnote.bodyを、1行目のタイトルごとそのまま渡す
+  async function copyAll() {
+    const ok = await copyText(editing ? draft : note.body);
+    setCopyState(ok ? "ok" : "ng");
+    if (copyTimerRef.current != null) clearTimeout(copyTimerRef.current);
+    copyTimerRef.current = setTimeout(() => setCopyState("idle"), COPY_FEEDBACK_MS);
   }
 
   function startEdit() {
@@ -360,6 +375,13 @@ export function NoteScreen({ syncBar, slideClass, note, startEditing, startWithR
               ))}
             </span>
             <span className="spacer" />
+            <button
+              className={copyState === "ok" ? "icon-btn accent" : "icon-btn"}
+              aria-label={copyState === "ok" ? "コピーしました" : copyState === "ng" ? "コピーできませんでした" : "全文をコピー"}
+              onClick={() => void copyAll()}
+            >
+              {copyState === "ok" ? <CheckIcon /> : <CopyIcon />}
+            </button>
             {editing && (
               <>
                 <button className="icon-btn" aria-label="取り消し" disabled={!canUndo(historyRef.current)} onClick={undo}>
@@ -462,9 +484,9 @@ export function Gallery({
         {metas.map(
           (m) =>
             urls[m.id] && (
-              <span key={m.id} className="thumb-wrap">
+              <span key={m.id} className={`thumb-wrap${m.id.startsWith("staffportrait") ? " staff-portrait-wrap" : ""}`}>
                 <img
-                  className="thumb"
+                  className={`thumb${m.id.startsWith("staffportrait") ? " staff-portrait" : ""}`}
                   src={urls[m.id]}
                   onClick={() => setFullId(m.id)}
                   draggable={Boolean(fullUrls[m.id])}
