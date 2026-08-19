@@ -6,6 +6,8 @@ import {
   loadBootProfile,
   markBoot,
   measureBoot,
+  formatBootProfiles,
+  loadBootProfiles,
   startBootProfile,
   summarizeNavigation,
   type BootProfile,
@@ -74,7 +76,7 @@ describe("finishBootProfile / loadBootProfile", () => {
   });
 
   it("壊れた記録はnullとして扱う（読み出しで落とさない）", () => {
-    localStorage.setItem("tanimemo.bootProfile", "{壊れたJSON");
+    localStorage.setItem("tanimemo.bootProfiles", "{壊れたJSON");
     expect(loadBootProfile()).toBeNull();
   });
 });
@@ -161,5 +163,68 @@ describe("formatBootProfile（ナビゲーション込み）", () => {
       nav: null,
     };
     expect(formatBootProfile(p)).not.toContain("SW起動");
+  });
+});
+
+describe("起動プロファイルの履歴", () => {
+  it("新しい順に積む（最新が先頭）", () => {
+    startBootProfile(fakeClock([0, 10]));
+    finishBootProfile({ notes: 1, bodyChars: 1 }, 1000);
+    startBootProfile(fakeClock([0, 20]));
+    finishBootProfile({ notes: 2, bodyChars: 2 }, 2000);
+    expect(loadBootProfiles().map((p) => p.at)).toEqual([2000, 1000]);
+  });
+
+  it("10件を超えたら古いものから捨てる", () => {
+    for (let i = 1; i <= 12; i++) {
+      startBootProfile(fakeClock([0, i]));
+      finishBootProfile({ notes: i, bodyChars: 0 }, i * 1000);
+    }
+    const list = loadBootProfiles();
+    expect(list).toHaveLength(10);
+    expect(list[0].at).toBe(12000);
+    expect(list[9].at).toBe(3000);
+  });
+
+  it("loadBootProfileは履歴の最新1件を返す", () => {
+    startBootProfile(fakeClock([0, 10]));
+    finishBootProfile({ notes: 1, bodyChars: 1 }, 1000);
+    startBootProfile(fakeClock([0, 20]));
+    const latest = finishBootProfile({ notes: 2, bodyChars: 2 }, 2000);
+    expect(loadBootProfile()).toEqual(latest);
+  });
+
+  it("履歴が壊れていても空として扱う", () => {
+    localStorage.setItem("tanimemo.bootProfiles", "{壊れ");
+    expect(loadBootProfiles()).toEqual([]);
+    expect(loadBootProfile()).toBeNull();
+  });
+});
+
+describe("formatBootProfiles", () => {
+  function sample(at: number, sync: number): BootProfile {
+    return {
+      at,
+      marks: [{ name: "一覧の初回読み出し", ms: 36 }, { name: "初回同期", ms: sync }],
+      spans: [],
+      counts: { notes: 435, bodyChars: 2165833 },
+      nav: { workerStart: 2, responseEnd: 14, domContentLoaded: 64, jsStart: 63, scriptMs: 16, scriptKB: 0, controlled: true },
+    };
+  }
+
+  it("最新は詳細、過去は1行ずつ並べる", () => {
+    const text = formatBootProfiles([sample(2000, 328), sample(1000, 2400)]);
+    expect(text).toContain("SW起動: 2ms");
+    expect(text).toContain("過去の起動");
+    // 過去の行は1行サマリ。遅かった回を見分けられるよう主要な3つを出す
+    expect(text).toMatch(/JS開始: 63ms \/ 一覧: 36ms \/ 同期: 2400ms/);
+  });
+
+  it("1件しかなければ過去の行は出さない", () => {
+    expect(formatBootProfiles([sample(2000, 328)])).not.toContain("過去の起動");
+  });
+
+  it("記録が無ければその旨を返す", () => {
+    expect(formatBootProfiles([])).toBe("前回の起動: 記録なし");
   });
 });

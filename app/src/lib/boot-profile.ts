@@ -31,7 +31,9 @@ export type BootProfile = {
   nav?: BootNav | null;
 };
 
-const STORAGE_KEY = "tanimemo.bootProfile";
+// 直近の起動を新しい順に残す。「たまに遅い」を捕まえるには1回分では足りない
+const STORAGE_KEY = "tanimemo.bootProfiles";
+const KEEP = 10;
 
 // Performance APIのエントリを表示用にまとめる。取得元と丸め方をここに閉じ込めて単体テストする
 export function summarizeNavigation(
@@ -101,23 +103,32 @@ export function finishBootProfile(
 ): BootProfile {
   const profile: BootProfile = { at, marks: [...marks], spans: [...spans], counts, nav: collectNavigation(bootAt) };
   try {
-    storage?.setItem(STORAGE_KEY, JSON.stringify(profile));
+    const history = [profile, ...loadBootProfiles(storage)].slice(0, KEEP);
+    storage?.setItem(STORAGE_KEY, JSON.stringify(history));
   } catch {
     // 保存できなくても起動は続ける（プライベートブラウズ等）
   }
   return profile;
 }
 
+export function loadBootProfiles(
+  storage: Storage | undefined = typeof localStorage === "undefined" ? undefined : localStorage
+): BootProfile[] {
+  try {
+    const raw = storage?.getItem(STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as BootProfile[];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+// 最新の1回分。詳細表示に使う
 export function loadBootProfile(
   storage: Storage | undefined = typeof localStorage === "undefined" ? undefined : localStorage
 ): BootProfile | null {
-  try {
-    const raw = storage?.getItem(STORAGE_KEY);
-    if (!raw) return null;
-    return JSON.parse(raw) as BootProfile;
-  } catch {
-    return null;
-  }
+  return loadBootProfiles(storage)[0] ?? null;
 }
 
 // 桁区切り。toLocaleStringは環境で結果が変わるので自前で入れる
@@ -138,4 +149,26 @@ export function formatBootProfile(p: BootProfile): string {
   const lines = p.marks.map((m) => `  ${m.name}: ${m.ms}ms`);
   const detail = p.spans.length > 0 ? [`  内訳 ${p.spans.map((s) => `${s.name}: ${s.ms}ms`).join(" / ")}`] : [];
   return [head, ...navLines, ...lines, ...detail].join("\n");
+}
+
+function markMs(p: BootProfile, name: string): number | null {
+  return p.marks.find((m) => m.name === name)?.ms ?? null;
+}
+
+// 過去の起動は1行にまとめる。遅かった回を見分けられればよいので主要な3つだけ出す
+function formatBootLine(p: BootProfile): string {
+  const time = new Date(p.at).toLocaleTimeString("ja-JP");
+  const parts = [
+    p.nav ? `JS開始: ${p.nav.jsStart}ms` : null,
+    markMs(p, "一覧の初回読み出し") != null ? `一覧: ${markMs(p, "一覧の初回読み出し")}ms` : null,
+    markMs(p, "初回同期") != null ? `同期: ${markMs(p, "初回同期")}ms` : null,
+  ].filter((x): x is string => x !== null);
+  return `  ${time} ${parts.join(" / ")}`;
+}
+
+export function formatBootProfiles(list: BootProfile[]): string {
+  if (list.length === 0) return "前回の起動: 記録なし";
+  const [latest, ...past] = list;
+  const pastLines = past.length > 0 ? ["  過去の起動", ...past.map(formatBootLine)] : [];
+  return [formatBootProfile(latest), ...pastLines].join("\n");
 }
