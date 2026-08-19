@@ -7,6 +7,7 @@ import {
   markBoot,
   measureBoot,
   startBootProfile,
+  summarizeNavigation,
   type BootProfile,
 } from "./boot-profile";
 
@@ -92,5 +93,73 @@ describe("formatBootProfile", () => {
     expect(text).toContain("Appマウント: 120ms");
     expect(text).toContain("初回同期: 1520ms");
     expect(text).toContain("空メモ掃除: 210ms");
+  });
+});
+
+describe("summarizeNavigation", () => {
+  const nav = { workerStart: 118.4, responseEnd: 210.2, domContentLoadedEventEnd: 301.6 };
+  const script = { duration: 480.7, transferSize: 0, encodedBodySize: 327680 };
+
+  it("ナビゲーション基準の各時点とメインJSの取得を丸めて返す", () => {
+    const got = summarizeNavigation(nav, script, 950.3, true);
+    expect(got).toEqual({
+      workerStart: 118,
+      responseEnd: 210,
+      domContentLoaded: 302,
+      jsStart: 950,
+      scriptMs: 481,
+      scriptKB: 320,
+      controlled: true,
+    });
+  });
+
+  it("SWキャッシュから返るとtransferSizeが0になるので実体サイズを使う", () => {
+    const got = summarizeNavigation(nav, { duration: 10, transferSize: 0, encodedBodySize: 102400 }, 100, true);
+    expect(got?.scriptKB).toBe(100);
+  });
+
+  it("ネットワークから取得したときは転送サイズを使う", () => {
+    const got = summarizeNavigation(nav, { duration: 10, transferSize: 51200, encodedBodySize: 102400 }, 100, false);
+    expect(got?.scriptKB).toBe(50);
+  });
+
+  it("navigation情報が取れない環境ではnullを返す", () => {
+    expect(summarizeNavigation(undefined, script, 100, true)).toBeNull();
+  });
+
+  it("メインJSのresource情報が無くても他の値は返す", () => {
+    const got = summarizeNavigation(nav, undefined, 950, true);
+    expect(got?.scriptMs).toBe(0);
+    expect(got?.scriptKB).toBe(0);
+    expect(got?.jsStart).toBe(950);
+  });
+});
+
+describe("formatBootProfile（ナビゲーション込み）", () => {
+  it("画面が出るまでの内訳を1行で出す", () => {
+    const p: BootProfile = {
+      at: 1755600000000,
+      marks: [{ name: "Appマウント", ms: 12 }],
+      spans: [],
+      counts: { notes: 436, bodyChars: 2170583 },
+      nav: { workerStart: 118, responseEnd: 210, domContentLoaded: 302, jsStart: 950, scriptMs: 481, scriptKB: 320, controlled: true },
+    };
+    const text = formatBootProfile(p);
+    expect(text).toContain("SW起動: 118ms");
+    expect(text).toContain("HTML: 210ms");
+    expect(text).toContain("JS開始: 950ms");
+    expect(text).toContain("メインJS: 481ms・320KB");
+    expect(text).toContain("SW制御: あり");
+  });
+
+  it("ナビゲーション情報が無ければその行は出さない", () => {
+    const p: BootProfile = {
+      at: 1755600000000,
+      marks: [{ name: "Appマウント", ms: 12 }],
+      spans: [],
+      counts: { notes: 1, bodyChars: 1 },
+      nav: null,
+    };
+    expect(formatBootProfile(p)).not.toContain("SW起動");
   });
 });

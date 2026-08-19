@@ -4,6 +4,22 @@
 
 export type BootMark = { name: string; ms: number };
 export type BootSpan = { name: string; ms: number };
+// 画面が出るまでの内訳。ナビゲーション開始（アイコンをタップした直後）を0とした経過
+export type BootNav = {
+  // Service Workerが立ち上がってリクエストを処理し始めるまで
+  workerStart: number;
+  // HTMLを受け取り終えるまで
+  responseEnd: number;
+  domContentLoaded: number;
+  // main.tsxのモジュールが動き始めるまで
+  jsStart: number;
+  // メインJSの取得所要と大きさ
+  scriptMs: number;
+  scriptKB: number;
+  // SWが制御しているか（していなければキャッシュを使えていない）
+  controlled: boolean;
+};
+
 export type BootProfile = {
   // 保存した時刻（epoch ms）。表示のときだけ使う
   at: number;
@@ -12,9 +28,42 @@ export type BootProfile = {
   // 個別処理の所要
   spans: BootSpan[];
   counts: { notes: number; bodyChars: number };
+  nav?: BootNav | null;
 };
 
 const STORAGE_KEY = "tanimemo.bootProfile";
+
+// Performance APIのエントリを表示用にまとめる。取得元と丸め方をここに閉じ込めて単体テストする
+export function summarizeNavigation(
+  nav: { workerStart: number; responseEnd: number; domContentLoadedEventEnd: number } | undefined,
+  script: { duration: number; transferSize: number; encodedBodySize: number } | undefined,
+  jsStart: number,
+  controlled: boolean
+): BootNav | null {
+  if (!nav) return null;
+  // SWのキャッシュから返るとtransferSizeは0になる。実体サイズで代用する
+  const bytes = script ? (script.transferSize > 0 ? script.transferSize : script.encodedBodySize) : 0;
+  return {
+    workerStart: Math.round(nav.workerStart),
+    responseEnd: Math.round(nav.responseEnd),
+    domContentLoaded: Math.round(nav.domContentLoadedEventEnd),
+    jsStart: Math.round(jsStart),
+    scriptMs: script ? Math.round(script.duration) : 0,
+    scriptKB: Math.round(bytes / 1024),
+    controlled,
+  };
+}
+
+// 実際のPerformance APIから拾う薄い層。メインJSはViteの出力名（/assets/index-*.js）で見分ける
+function collectNavigation(jsStart: number): BootNav | null {
+  if (typeof performance === "undefined") return null;
+  const nav = performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined;
+  const script = performance
+    .getEntriesByType("resource")
+    .find((r) => r.name.includes("/assets/index-") && r.name.endsWith(".js")) as PerformanceResourceTiming | undefined;
+  const controlled = typeof navigator !== "undefined" && navigator.serviceWorker?.controller != null;
+  return summarizeNavigation(nav, script, jsStart, controlled);
+}
 
 let clock: () => number = () => performance.now();
 let bootAt = 0;
@@ -50,7 +99,7 @@ export function finishBootProfile(
   at: number = Date.now(),
   storage: Storage | undefined = typeof localStorage === "undefined" ? undefined : localStorage
 ): BootProfile {
-  const profile: BootProfile = { at, marks: [...marks], spans: [...spans], counts };
+  const profile: BootProfile = { at, marks: [...marks], spans: [...spans], counts, nav: collectNavigation(bootAt) };
   try {
     storage?.setItem(STORAGE_KEY, JSON.stringify(profile));
   } catch {
@@ -79,7 +128,14 @@ function comma(n: number): string {
 export function formatBootProfile(p: BootProfile): string {
   const when = new Date(p.at).toLocaleString("ja-JP");
   const head = `前回の起動 (${when}) メモ${p.counts.notes}件 / 本文${comma(p.counts.bodyChars)}字`;
+  const n = p.nav;
+  const navLines = n
+    ? [
+        `  画面が出るまで SW起動: ${n.workerStart}ms / HTML: ${n.responseEnd}ms / DOM: ${n.domContentLoaded}ms / JS開始: ${n.jsStart}ms`,
+        `  メインJS: ${n.scriptMs}ms・${n.scriptKB}KB / SW制御: ${n.controlled ? "あり" : "なし"}`,
+      ]
+    : [];
   const lines = p.marks.map((m) => `  ${m.name}: ${m.ms}ms`);
   const detail = p.spans.length > 0 ? [`  内訳 ${p.spans.map((s) => `${s.name}: ${s.ms}ms`).join(" / ")}`] : [];
-  return [head, ...lines, ...detail].join("\n");
+  return [head, ...navLines, ...lines, ...detail].join("\n");
 }
