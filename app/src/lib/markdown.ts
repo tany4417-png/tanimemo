@@ -17,8 +17,23 @@ if (typeof DOMPurify.addHook === "function") {
   });
 }
 
+// 各ブロックの先頭タグへ、原文（Markdown）での開始位置をdata-srcとして入れる。
+// 閲覧中にタップした場所から編集を始めるための手がかりで、DOMPurifyはdata-*をそのまま残す
+function withSrcPos(html: string, pos: number): string {
+  return html.replace(/^(\s*<[a-zA-Z][a-zA-Z0-9-]*)/, `$1 data-src="${pos}"`);
+}
+
 export function renderMarkdown(body: string): string {
-  const html = marked.parse(body, { async: false }) as string;
+  // ブロック単位で位置を数えるためlexer→parserに分ける。トップレベルのトークンだけを見るので、
+  // 箇条書きや引用はまとまりごとに1つのdata-srcになる
+  const tokens = marked.lexer(body);
+  let pos = 0;
+  let html = "";
+  for (const token of tokens) {
+    const part = marked.parser([token], { async: false }) as string;
+    if (part.trim() !== "") html += withSrcPos(part, pos);
+    pos += token.raw.length;
+  }
   return DOMPurify.sanitize(html);
 }
 

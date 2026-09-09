@@ -17,7 +17,17 @@ export function CardThumbs({ noteId }: { noteId: string }) {
   if (metas.length === 0 && fileCount === 0) return null;
   return (
     <div className="card-thumbs">
-      {metas.map((m) => urls[m.id] && <img key={m.id} className="card-thumb" src={urls[m.id]} alt="" />)}
+      {metas.map(
+        (m) =>
+          urls[m.id] && (
+            <img
+              key={m.id}
+              className={`card-thumb${m.id.startsWith("staffportrait") ? " staff-portrait" : ""}`}
+              src={urls[m.id]}
+              alt=""
+            />
+          )
+      )}
       {fileCount > 0 && (
         <span className="card-files" aria-label={`添付ファイル${fileCount}件`}>
           <ClipIcon size={14} />

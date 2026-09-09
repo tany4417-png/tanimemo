@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { addAttachments, rejectedMessage } from "../lib/attachments";
 import { copyText } from "../lib/clipboard";
@@ -7,11 +7,15 @@ import { filesFromDataTransfer, hasFiles } from "../lib/filedrop";
 import { flattenFolderTree, listAllFolders } from "../lib/folders";
 import { canRedo, canUndo, histInit, histPush, histRedo, histUndo, type Hist } from "../lib/history";
 import { highlightMatches } from "../lib/highlight";
-import { renderMarkdown, toggleCheckbox } from "../lib/markdown";
+import { firstLineTitle, renderMarkdown, toggleCheckbox } from "../lib/markdown";
 import type { Note } from "../lib/types";
+import { charPosFromScroll, collectBlocks, pickForPos, pickTopVisible, scrollTopForCharPos } from "../lib/srcpos";
+import { scrollHideStep, type ScrollHideState } from "../lib/viewport";
 import { AttachmentFiles } from "./AttachmentFiles";
-import { BackIcon, BellIcon, CheckIcon, ClipIcon, CloseIcon, CopyIcon, ImageIcon, RedoIcon, UndoIcon } from "./icons";
+import { CloseIcon } from "./icons";
 import { ImageOverlay, onImageDragStart } from "./ImageOverlay";
+import { NoteHeader } from "./NoteHeader";
+import { NoteMenuSheet } from "./NoteMenuSheet";
 import { ReminderSheet } from "./ReminderSheet";
 import { useAttachmentUrls } from "./useAttachmentUrls";
 
@@ -54,6 +58,7 @@ type Props = {
 export function NoteScreen({ syncBar, slideClass, note, startEditing, startWithReminder, onChange, onDelete, onBack, onMoveNote, onAttached, onDeleteAttachment, highlightQuery, onAutoSave, onEditSessionEnd, flushRef }: Props) {
   const [editing, setEditing] = useState(startEditing ?? false);
   const [draft, setDraft] = useState(note.body);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [movePickerOpen, setMovePickerOpen] = useState(false);
   const [reminderOpen, setReminderOpen] = useState(startWithReminder ?? false);
   // 外部（エクスプローラ等）からのファイルドロップ中かどうか。枠線表示のみに使う
@@ -75,6 +80,17 @@ export function NoteScreen({ syncBar, slideClass, note, startEditing, startWithR
   // ジャンプ（scrollIntoView）は初回表示の1回だけ。チェックボックス切替等でhtmlが変わって
   // 再ハイライトしても、読んでいる位置を勝手に動かさない
   const jumpedRef = useRef(false);
+  const bodyRef = useRef<HTMLDivElement | null>(null);
+  // 編集モードに入るとき、原文のどこを見せるか。focus=trueならキーボードも出す
+  // （本文をタップして入った場合。編集ボタン経由では出さない）
+  const pendingEditRef = useRef<{ pos: number; focus: boolean } | null>(
+    (startEditing ?? false) ? { pos: 0, focus: true } : null
+  );
+  // 編集をやめるとき、編集欄で見ていた原文の位置。閲覧側の同じ場所へ寄せるために持ち越す
+  const leavePosRef = useRef<number | null>(null);
+  // ヘッダーをスクロールで隠す状態。判定用の位置はrefで持ち、classの付け外しだけstateにする
+  const [headerHidden, setHeaderHidden] = useState(false);
+  const hideStateRef = useRef<ScrollHideState>({ visible: true, lastTop: 0 });
 
   // undo/redo履歴。editing中だけ使い、historyRef自体はrefなので更新してもrenderされない。
   // canUndo/canRedoの表示（ボタンのdisabled）を更新するためだけに、値は使わずsetHistoryTickでrenderを誘発する
@@ -114,6 +130,38 @@ export function NoteScreen({ syncBar, slideClass, note, startEditing, startWithR
       first.scrollIntoView({ block: "center" });
     }
   }, [html, editing, highlightQuery]);
+
+  // 閲覧⇔編集の切替後、同じ場所を見せ直す。描画済みの位置が要るのでlayout effectで行う
+  useLayoutEffect(() => {
+    if (editing) {
+      const pending = pendingEditRef.current;
+      pendingEditRef.current = null;
+      const ta = textareaRef.current;
+      if (!pending || !ta) return;
+      // textareaは等幅で流し込むだけなので、文字数の比率でおおよその位置に合う
+      ta.scrollTop = scrollTopForCharPos(ta, pending.pos, ta.value.length);
+      if (pending.focus) {
+        // カーソルを置いてからフォーカスすると、ブラウザがその位置を見える所まで運んでくれる
+        ta.setSelectionRange(pending.pos, pending.pos);
+        ta.focus();
+      }
+      return;
+    }
+    const pos = leavePosRef.current;
+    leavePosRef.current = null;
+    const view = viewRef.current;
+    const body = bodyRef.current;
+    if (pos == null || !view || !body) return;
+    const block = pickForPos(collectBlocks(view, body.getBoundingClientRect().top), pos);
+    if (block) body.scrollTop += block.top;
+  }, [editing]);
+
+  // 編集中はヘッダーを隠さない（textarea内スクロールでは出し入れの操作ができず、戻れなくなるため）
+  useEffect(() => {
+    if (!editing) return;
+    hideStateRef.current = { visible: true, lastTop: 0 };
+    setHeaderHidden(false);
+  }, [editing]);
 
   // 編集中、入力がAUTOSAVE_MSだけ途切れたら未保存のdraftをDBへ書く。
   // undo/redoボタン経由のdraft変更もこのeffectが自然に拾う
@@ -218,7 +266,17 @@ export function NoteScreen({ syncBar, slideClass, note, startEditing, startWithR
     copyTimerRef.current = setTimeout(() => setCopyState("idle"), COPY_FEEDBACK_MS);
   }
 
-  function startEdit() {
+  // 本文のスクロールに合わせてヘッダーを出し入れする。編集中は対象外
+  function onBodyScroll(e: React.UIEvent<HTMLDivElement>) {
+    if (editing) return;
+    const next = scrollHideStep(hideStateRef.current, e.currentTarget.scrollTop);
+    hideStateRef.current = next;
+    setHeaderHidden(!next.visible);
+  }
+
+  // 原文のposの位置から編集を始める。focus=trueならその場にカーソルを置いてキーボードを出す
+  function startEditAt(pos: number, focus: boolean) {
+    pendingEditRef.current = { pos, focus };
     if (coalesceTimer.current) {
       clearTimeout(coalesceTimer.current);
       coalesceTimer.current = null;
@@ -231,8 +289,17 @@ export function NoteScreen({ syncBar, slideClass, note, startEditing, startWithR
     setEditing(true);
   }
 
+  // 編集ボタン。いま画面の上端に見えている段落から始め、キーボードは出さない
+  function startEdit() {
+    const view = viewRef.current;
+    const body = bodyRef.current;
+    const blocks = view && body ? collectBlocks(view, body.getBoundingClientRect().top) : [];
+    startEditAt(pickTopVisible(blocks, 0) ?? 0, false);
+  }
+
   // 「完了」: 未保存分を保存し、セッションundoエントリを確定して閲覧モードへ戻る
   function finishEditing() {
+    if (textareaRef.current) leavePosRef.current = charPosFromScroll(textareaRef.current, draft.length);
     if (coalesceTimer.current) {
       clearTimeout(coalesceTimer.current);
       coalesceTimer.current = null;
@@ -262,7 +329,12 @@ export function NoteScreen({ syncBar, slideClass, note, startEditing, startWithR
     if (t instanceof HTMLInputElement && t.type === "checkbox") {
       const boxes = [...e.currentTarget.querySelectorAll('input[type="checkbox"]')];
       onChange({ body: toggleCheckbox(note.body, boxes.indexOf(t)) });
+      return;
     }
+    if (t.closest("a")) return; // リンクはそのまま開かせる
+    // タップした段落の原文位置から編集を始める。data-srcはrenderMarkdownがブロックごとに入れている
+    const block = t.closest<HTMLElement>("[data-src]");
+    startEditAt(Number(block?.dataset.src ?? 0), true);
   }
 
   // 選択・ペースト・ドロップされたファイルを種類を問わず保存し、完了ごとにonAttachedで同期をスケジュールする。
@@ -309,124 +381,117 @@ export function NoteScreen({ syncBar, slideClass, note, startEditing, startWithR
 
   return (
     <div
-      className={`note screen ${slideClass}${dropActive ? " file-drop-active" : ""}`}
+      className={`note screen ${slideClass}${editing ? " editing" : ""}${dropActive ? " file-drop-active" : ""}`}
       onDragOver={onDragOver}
       onDragLeave={onDragLeave}
       onDrop={onDrop}
     >
-      <div className="list-header">
-        {syncBar}
-        <div className="toolbar">
-          {/* 1段目（オーナー指定配置）: 戻るだけ左、写真・移動…・編集/完了・削除は右揃え。
-              画面幅で位置が変わらないよう常にこの並び固定 */}
-          <div className="note-toolbar-row">
-            <button className="icon-btn" onClick={onBack} aria-label="戻る">
-              <BackIcon />
-            </button>
-            <span className="spacer" />
-            <button className="icon-btn" aria-label="写真を添付" onClick={() => fileInputRef.current?.click()}>
-              <ImageIcon />
-            </button>
-            <button className="icon-btn" aria-label="ファイルを添付" onClick={() => anyFileInputRef.current?.click()}>
-              <ClipIcon />
-            </button>
-            <button
-              className={(note.remindAt ?? null) != null ? "icon-btn accent" : "icon-btn"}
-              aria-label="リマインダー"
-              onClick={() => setReminderOpen(true)}
-            >
-              <BellIcon />
-            </button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              multiple
-              style={{ display: "none" }}
-              onChange={onPickFiles}
-            />
-            {/* accept無し＝PDF・Excel等どれでも。iOSでは「写真」「ブラウズ」の選択が出る */}
-            <input
-              ref={anyFileInputRef}
-              type="file"
-              multiple
-              style={{ display: "none" }}
-              onChange={onPickFiles}
-            />
-            <button className="tint acc-violet" onClick={() => setMovePickerOpen((v) => !v)}>移動…</button>
-            {editing ? (
-              <button className="primary" onClick={finishEditing}>完了</button>
-            ) : (
-              <button className="tint acc-amber" onClick={startEdit}>編集</button>
-            )}
-            <button className="danger" onClick={onDelete}>削除</button>
-          </div>
-          {/* 2段目: ★★★・スペーサー・巻き戻し・やり直し（undo/redoは編集中のみ表示） */}
-          <div className="note-toolbar-row">
-            <span className="stars">
-              {[1, 2, 3].map((i) => (
-                <button
-                  key={i}
-                  className={note.importance >= i ? "star on" : "star"}
-                  onClick={() => onChange({ importance: (note.importance === i ? i - 1 : i) as 0 | 1 | 2 | 3 })}
-                >
-                  ★
-                </button>
-              ))}
-            </span>
-            <span className="spacer" />
-            <button
-              className={copyState === "ok" ? "icon-btn accent" : "icon-btn"}
-              aria-label={copyState === "ok" ? "コピーしました" : copyState === "ng" ? "コピーできませんでした" : "全文をコピー"}
-              onClick={() => void copyAll()}
-            >
-              {copyState === "ok" ? <CheckIcon /> : <CopyIcon />}
-            </button>
-            {editing && (
-              <>
-                <button className="icon-btn" aria-label="取り消し" disabled={!canUndo(historyRef.current)} onClick={undo}>
-                  <UndoIcon />
-                </button>
-                <button className="icon-btn" aria-label="やり直し" disabled={!canRedo(historyRef.current)} onClick={redo}>
-                  <RedoIcon />
-                </button>
-              </>
-            )}
-          </div>
-        </div>
-      </div>
-      {movePickerOpen && (
-        <div className="folder-picker">
+      <NoteHeader
+        title={firstLineTitle(note.body)}
+        editing={editing}
+        hidden={headerHidden}
+        canUndo={canUndo(historyRef.current)}
+        canRedo={canRedo(historyRef.current)}
+        onBack={onBack}
+        onEdit={startEdit}
+        onUndo={undo}
+        onRedo={redo}
+        onFinish={finishEditing}
+        onMenu={() => setMenuOpen((v) => !v)}
+      />
+      {/* ファイル選択のinputはメニューの開閉と無関係に生かしておく（メニューを閉じても選択ダイアログは続くため） */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        multiple
+        style={{ display: "none" }}
+        onChange={onPickFiles}
+      />
+      {/* accept無し＝PDF・Excel等どれでも。iOSでは「写真」「ブラウズ」の選択が出る */}
+      <input
+        ref={anyFileInputRef}
+        type="file"
+        multiple
+        style={{ display: "none" }}
+        onChange={onPickFiles}
+      />
+      {/* ヘッダー直下に重ねる層。本文を押し下げないよう浮かせる（pointer-eventsは中身だけ有効） */}
+      <div className="note-sheets">
+        {/* メニュー・移動ピッカーの外側をタップして閉じるための受け皿。
+            リマインダー設定は入力途中の誤タップで消したくないので対象外にする */}
+        {(menuOpen || movePickerOpen) && (
           <div
-            className={note.folderId === null ? "folder-picker-item disabled" : "folder-picker-item"}
-            onClick={() => void moveTo(null)}
-          >
-            すべてのメモ
-          </div>
-          {flatFolders.map(({ folder, depth }) => (
+            className="note-sheet-backdrop"
+            onClick={() => {
+              setMenuOpen(false);
+              setMovePickerOpen(false);
+            }}
+          />
+        )}
+        {menuOpen && (
+          <NoteMenuSheet
+            syncBar={syncBar}
+            importance={note.importance}
+            reminderOn={(note.remindAt ?? null) != null}
+            copyState={copyState}
+            onImportance={(v) => onChange({ importance: v })}
+            onPickImage={() => {
+              setMenuOpen(false);
+              fileInputRef.current?.click();
+            }}
+            onPickFile={() => {
+              setMenuOpen(false);
+              anyFileInputRef.current?.click();
+            }}
+            onReminder={() => {
+              setMenuOpen(false);
+              setReminderOpen(true);
+            }}
+            onMove={() => {
+              setMenuOpen(false);
+              setMovePickerOpen((v) => !v);
+            }}
+            onCopy={() => void copyAll()}
+            onDelete={() => {
+              setMenuOpen(false);
+              onDelete();
+            }}
+          />
+        )}
+        {movePickerOpen && (
+          <div className="folder-picker">
             <div
-              key={folder.id}
-              className={`folder-picker-item ${accentClassFor(folder.name)}${note.folderId === folder.id ? " disabled" : ""}`}
-              style={{ paddingLeft: `${12 + depth * 16}px` }}
-              onClick={() => void moveTo(folder.id)}
+              className={note.folderId === null ? "folder-picker-item disabled" : "folder-picker-item"}
+              onClick={() => void moveTo(null)}
             >
-              {folder.name}
+              すべてのメモ
             </div>
-          ))}
-        </div>
-      )}
-      {reminderOpen && (
-        <ReminderSheet
-          note={note}
-          onClose={() => setReminderOpen(false)}
-          onSave={(remindAt, repeatRule) => {
-            onChange({ remindAt, repeatRule });
-            setReminderOpen(false);
-          }}
-        />
-      )}
+            {flatFolders.map(({ folder, depth }) => (
+              <div
+                key={folder.id}
+                className={`folder-picker-item ${accentClassFor(folder.name)}${note.folderId === folder.id ? " disabled" : ""}`}
+                style={{ paddingLeft: `${12 + depth * 16}px` }}
+                onClick={() => void moveTo(folder.id)}
+              >
+                {folder.name}
+              </div>
+            ))}
+          </div>
+        )}
+        {reminderOpen && (
+          <ReminderSheet
+            note={note}
+            onClose={() => setReminderOpen(false)}
+            onSave={(remindAt, repeatRule) => {
+              onChange({ remindAt, repeatRule });
+              setReminderOpen(false);
+            }}
+          />
+        )}
+      </div>
       {/* ヘッダー（・移動ピッカー・リマインダーシート）以外＝本文・ギャラリーだけがスクロール＆バウンドする */}
-      <div className="screen-body">
+      <div className="screen-body" ref={bodyRef} onScroll={onBodyScroll}>
         {/* 内容が短くてもラバーバンドさせるため、中身全体を.bounce-areaで1枚ラップする（常にコンテナ＋1pxの高さ） */}
         <div className="bounce-area">
           {editing ? (
@@ -438,7 +503,6 @@ export function NoteScreen({ syncBar, slideClass, note, startEditing, startWithR
               <textarea
                 ref={textareaRef}
                 className="editor"
-                autoFocus
                 value={draft}
                 onChange={onDraftChange}
                 onPaste={onEditorPaste}

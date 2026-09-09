@@ -775,8 +775,8 @@ export default function App() {
     [childFolders, runAction]
   );
 
-  // 同期バー。一覧・メモ・設定・ゴミ箱それぞれのヘッダー（.list-header）内にまとめて表示するため、
-  // 要素として一度だけ組み立てて各画面へ渡す（画面ごとに個別にposition:stickyを重ねると二重に固定されてしまうため）
+  // 同期バー。一覧・設定・ゴミ箱ではヘッダー（.list-header）内に、メモ画面では本文の面積を優先して
+  // その他メニューの中に置く。要素として一度だけ組み立てて各画面へ渡す
   const syncBar = (
     <SyncStatus
       status={status}

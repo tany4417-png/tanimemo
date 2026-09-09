@@ -9,6 +9,7 @@
   --vermilion: #B03A2E;  /* 削除・破棄のみ */
   --star: #C9920A;       /* 星 */
   --neutral: #6B6455;    /* ボタンの中立塗りつぶし（役割色が無いボタンの既定色） */
+  --note-header-h: 48px;  /* メモ画面の1行ヘッダー（lib/viewport.tsのHEADER_Hと揃える） */
   --shadow-1: 0 1px 2px rgba(42,39,34,.06);
   --shadow-2: 0 4px 12px rgba(42,39,34,.05);
   --shadow-lift: 0 8px 24px rgba(42,39,34,.14);
@@ -155,6 +156,7 @@ button.danger { background: var(--vermilion); border-color: var(--vermilion); co
 }
 .card:active { transform: translateY(1px); box-shadow: var(--shadow-1); }
 .card-title { font-size: 16px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card-staff-role { margin-top: 3px; color: var(--indigo); font-size: 13px; font-weight: 600; }
 .card-stars { color: var(--star); margin-right: 4px; }
 /* 本文が空のメモでタイトル代わりに出す添付ファイル名。2件目以降の件数は控えめに */
 .card-file-more { color: var(--ink-soft); font-weight: 400; font-size: 13px; }
@@ -172,6 +174,7 @@ mark.search-hit { background: #ffe08a; color: inherit; border-radius: 2px; paddi
 .card-files { display: inline-flex; align-items: center; gap: 3px; font-size: 12px; color: var(--ink-soft);
   border: 1px solid var(--rule); border-radius: 6px; padding: 2px 6px; background: var(--card); }
 .card-thumb { width: 48px; height: 48px; object-fit: cover; border-radius: 6px; border: 1px solid var(--rule); }
+.card-thumb.staff-portrait { width: 40px; height: 60px; object-fit: contain; background: var(--card); }
 .empty { color: var(--ink-soft); text-align: center; padding: 40px 0; }
 
 /* ==================== 一覧/フォルダ ==================== */
@@ -266,16 +269,58 @@ button.icon-btn.accent { border-color: var(--indigo); color: var(--indigo); }
 /* ヘッダー以外（タグ入力・本文・ギャラリー）が.screen-body側。editorのflex:1が効くよう縦flexにしておく
    （bounce-area側に持たせる。screen-body自体はスクローラのままにしておく） */
 .note .bounce-area { display: flex; flex-direction: column; min-height: 0; }
-/* メモ画面のツールバーは指の当てやすさを優先して拡大する（一覧側は現状維持）。
-   .starだけは既存の見た目（星グリフのfont-size 1.2rem・padding 4px）を保つため対象から外す。
-   折返し（flex-wrap）だと画面幅でボタン位置が変わってしまうため、常に2段固定のレイアウトにする
-   （1段目: 戻る・★★★・スペーサー・保存/編集・削除／2段目: undo・redo・写真・移動…）。
-   .toolbar自体は縦積みの箱にし、各段（.note-toolbar-row）が横並びのflexコンテナになる */
-.note .toolbar { flex-direction: column; align-items: stretch; gap: 8px; }
-.note-toolbar-row { display: flex; align-items: center; gap: 10px; }
-.note-toolbar-row .spacer { flex: 1; }
-.note .toolbar button:not(.star) { min-height: 44px; padding: 10px 14px; font-size: 14px; }
-.note .toolbar button.icon-btn { width: 44px; height: 44px; padding: 0; }
+/* メモ画面の上部は1行だけ（戻る・タイトル・編集/完了・その他）。長文を読み書きする面積を稼ぐのが
+   目的なので、ここに操作を足すときは1行に収まるかを先に確かめる。absoluteで浮かせてあるぶん、
+   .screen-body側は同じ高さのpadding-topで受ける */
+.note.screen { position: relative; }
+.note-header {
+  position: absolute; top: 0; left: 0; right: 0; z-index: 6;
+  display: flex; align-items: center; gap: 8px;
+  height: calc(var(--note-header-h) + env(safe-area-inset-top));
+  padding: env(safe-area-inset-top) 8px 0; box-sizing: border-box;
+  background: var(--paper); border-bottom: 1px solid var(--rule);
+  transition: transform 0.18s ease;
+}
+/* 下へスクロールしている間の退避。要素は残したまま画面外へ送る（レイアウトを組み直さない） */
+.note-header.hidden { transform: translateY(-100%); }
+.note-header-title {
+  flex: 1; min-width: 0; font-size: 15px; font-weight: 600;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.note-header button { min-height: 40px; }
+.note-header button.icon-btn { width: 40px; height: 40px; padding: 0; }
+.note .screen-body { padding-top: calc(var(--note-header-h) + env(safe-area-inset-top)); }
+
+/* ヘッダー直下に重ねる層（その他メニュー・移動ピッカー・リマインダー設定）。
+   本文を押し下げず浮かせるため、層自体はクリックを素通しし、中身だけ受ける */
+.note-sheets {
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 5;
+  top: calc(var(--note-header-h) + env(safe-area-inset-top));
+  pointer-events: none;
+}
+.note-sheets > * { pointer-events: auto; }
+.note-sheets > .folder-picker { margin: 6px 8px; max-height: calc(100% - 12px); overflow-y: auto; }
+/* シートの外をタップして閉じるための透明な受け皿 */
+.note-sheet-backdrop { position: absolute; inset: 0; }
+.note-menu {
+  position: relative; margin: 6px 8px; max-height: calc(100% - 12px); overflow-y: auto;
+  display: flex; flex-direction: column;
+  background: var(--card); border: 1px solid var(--rule); border-radius: 10px;
+  box-shadow: var(--shadow-1), var(--shadow-lift);
+}
+.note-menu-sync { padding: 2px 12px; border-bottom: 1px solid var(--rule); }
+.note-menu-sync .syncbar { flex-wrap: wrap; }
+.note-menu-stars { padding: 2px 8px; border-bottom: 1px solid var(--rule); }
+.note-menu-item {
+  display: flex; align-items: center; justify-content: flex-start; gap: 10px;
+  min-height: 48px; padding: 10px 14px; font-size: 15px; text-align: left;
+  background: none; border: none; border-bottom: 1px solid var(--rule); border-radius: 0;
+  color: var(--ink);
+}
+.note-menu-item:last-child { border-bottom: none; }
+.note-menu-item.accent { color: var(--indigo); }
+.note-menu-item.danger-text { color: var(--vermilion); }
+
 .stars { display: flex; }
 .star { border: none; background: none; color: var(--rule); padding: 4px; font-size: 1.2rem; min-height: 44px; min-width: 44px; }
 .star.on { color: var(--star); }
@@ -286,6 +331,7 @@ button.icon-btn.accent { border-color: var(--indigo); color: var(--indigo); }
 .note-view input[type="checkbox"] { width: 1.1em; height: 1.1em; }
 .gallery { display: flex; gap: 8px; flex-wrap: wrap; padding: 10px 0; }
 .thumb { width: 120px; height: 120px; object-fit: cover; border-radius: 8px; border: 1px solid var(--rule); cursor: pointer; user-select: none; }
+.thumb.staff-portrait { width: 160px; height: 240px; object-fit: contain; background: var(--card); }
 /* 原寸表示。iPhone(PWA)ではvh基準だと画面全高にノッチ・ホームバー領域が含まれ、中央寄せした
    画像の上下端がそこに掛かって見切れるため、セーフエリア＋最低限の余白をpaddingで確保し、
    画像はその内側(100%)に収める */

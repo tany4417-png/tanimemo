@@ -16,6 +16,12 @@ import { BackIcon, CloseIcon } from "./icons";
 import { ReminderFolderCard } from "./ReminderFolderCard";
 import { type ReorderHandler, SwipeableCard } from "./SwipeableCard";
 
+function staffProfileRole(noteId: string, body: string): string | null {
+  if (!noteId.startsWith("staffprofile-")) return null;
+  const line = body.split("\n").find((row) => /^\*\*.+\*\*$/.test(row.trim()));
+  return line ? line.trim().slice(2, -2).trim() : null;
+}
+
 type Props = {
   syncBar: React.ReactNode;
   notes: Note[];
@@ -211,6 +217,7 @@ export function NoteList(p: Props) {
                     );
                   })()}
                 </div>
+                {staffProfileRole(n.id, n.body) && <div className="card-staff-role">{staffProfileRole(n.id, n.body)}</div>}
                 {/* 検索中だけ該当箇所の抜粋を出す（タップでその位置へ飛べることの手がかり） */}
                 {!isBrowsingFolder &&
                   (() => {

@@ -198,3 +198,25 @@ export function CheckIcon({ size = 24, className }: IconProps) {
     </svg>
   );
 }
+
+// その他の操作（横3点）。メモ画面ヘッダーのメニューを開くボタン
+export function MoreIcon({ size = 24, className }: IconProps) {
+  return (
+    <svg width={size} height={size} className={className} {...common}>
+      <circle cx="5" cy="12" r="1.4" fill="currentColor" stroke="none" />
+      <circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none" />
+      <circle cx="19" cy="12" r="1.4" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+// キーボードを閉じる（下向きの矢印＋床）。編集バーの左端に置く
+export function KeyboardDownIcon({ size = 24, className }: IconProps) {
+  return (
+    <svg width={size} height={size} className={className} {...common}>
+      <polyline points="8 6 12 10 16 6" />
+      <line x1="12" y1="10" x2="12" y2="3" />
+      <line x1="4" y1="20" x2="20" y2="20" />
+    </svg>
+  );
+}
