@@ -4,6 +4,10 @@ import type { AttachmentMeta, Folder, Note, SyncResponse } from "./types";
 
 export type SyncResult = { pushed: number; pulled: number; failedAttachments: number };
 
+// Worker/D1 の1リクエスト内クエリ上限を超えないよう、dirty行は小分けに送る。
+// 1行につきpurged確認＋upsertで最大2クエリ使うため、3種類合計でも十分余裕を持たせる。
+export const SYNC_BATCH_SIZE = 100;
+
 function stripNote(n: Note) {
   const { dirty: _dirty, ...rest } = n;
   return rest;
@@ -69,33 +73,48 @@ export async function runSync(
     }
   }
 
-  const res = await fetchFn("/api/sync", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify({
-      since,
-      notes: dirtyNotes.map(stripNote),
-      attachments: dirtyAtts.map(stripAtt),
-      folders: dirtyFolders.map(stripFolder),
-    }),
-  });
-  if (!res.ok) throw new Error(`sync failed: ${res.status}`);
-  const data = (await res.json()) as SyncResponse;
-  const folders = data.folders ?? [];
+  const batchCount = Math.max(
+    1,
+    Math.ceil(dirtyNotes.length / SYNC_BATCH_SIZE),
+    Math.ceil(dirtyAtts.length / SYNC_BATCH_SIZE),
+    Math.ceil(dirtyFolders.length / SYNC_BATCH_SIZE)
+  );
+  let batchSince = since;
+  let pulled = 0;
 
-  await db.transaction("rw", db.notes, db.attachments, db.attachmentBlobs, db.folders, db.meta, async () => {
+  for (let batchIndex = 0; batchIndex < batchCount; batchIndex += 1) {
+    const start = batchIndex * SYNC_BATCH_SIZE;
+    const batchNotes = dirtyNotes.slice(start, start + SYNC_BATCH_SIZE);
+    const batchAtts = dirtyAtts.slice(start, start + SYNC_BATCH_SIZE);
+    const batchFolders = dirtyFolders.slice(start, start + SYNC_BATCH_SIZE);
+    const res = await fetchFn("/api/sync", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({
+        since: batchSince,
+        notes: batchNotes.map(stripNote),
+        attachments: batchAtts.map(stripAtt),
+        folders: batchFolders.map(stripFolder),
+      }),
+    });
+    if (!res.ok) throw new Error(`sync failed: ${res.status}`);
+    const data = (await res.json()) as SyncResponse;
+    const folders = data.folders ?? [];
+    pulled += data.notes.length + data.attachments.length + folders.length;
+
+    await db.transaction("rw", db.notes, db.attachments, db.attachmentBlobs, db.folders, db.meta, async () => {
     // fetch応答待ちの間に新しい編集が入っている場合、その編集のdirtyを誤ってクリアしないよう、
     // 現在の行のupdatedAtがpushしたスナップショットと一致する場合だけdirtyを落とす。
-    for (const n of dirtyNotes) {
+    for (const n of batchNotes) {
       const cur = await db.notes.get(n.id);
       if (cur && cur.updatedAt === n.updatedAt) await db.notes.update(n.id, { dirty: 0 });
     }
-    for (const a of dirtyAtts) {
+    for (const a of batchAtts) {
       if (failedAttachmentIds.has(a.id)) continue; // アップロード失敗分は次回リトライのためdirtyを維持する
       const cur = await db.attachments.get(a.id);
       if (cur && cur.updatedAt === a.updatedAt) await db.attachments.update(a.id, { dirty: 0 });
     }
-    for (const fl of dirtyFolders) {
+    for (const fl of batchFolders) {
       const cur = await db.folders.get(fl.id);
       if (cur && cur.updatedAt === fl.updatedAt) await db.folders.update(fl.id, { dirty: 0 });
     }
@@ -129,7 +148,7 @@ export async function runSync(
       if (!cur || fl.updatedAt >= cur.updatedAt) await db.folders.put({ ...fl, orderKey: fl.orderKey ?? null, dirty: 0 });
     }
     await db.meta.put({ key: "lastSync", value: data.now });
-    if (full) await db.meta.put({ key: "fullResyncV4", value: 1 });
+    if (full && batchIndex === batchCount - 1) await db.meta.put({ key: "fullResyncV4", value: 1 });
 
     // サーバーで既にpurge済みのidは、上のdirtyクリアや受信適用で幽霊行が
     // 残っていてもここで物理削除して上書きする（削除の伝達漏れ防止・Fix2）。
@@ -147,11 +166,13 @@ export async function runSync(
       await db.attachments.delete(id);
       await db.folders.delete(id);
     }
-  });
+    });
+    batchSince = data.now;
+  }
 
   return {
     pushed: dirtyNotes.length + dirtyAtts.length + dirtyFolders.length,
-    pulled: data.notes.length + data.attachments.length + folders.length,
+    pulled,
     failedAttachments: failedAttachmentIds.size,
   };
 }

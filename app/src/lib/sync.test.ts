@@ -324,6 +324,37 @@ describe("runSync 全量再同期（fullResyncV4）", () => {
     expect(body.notes).toHaveLength(1);
     expect(body.notes[0].body).toBe("b");
   });
+
+  it("大量のdirtyメモを100件ずつに分割し、全件のdirtyを解除する", async () => {
+    await db.meta.put({ key: "fullResyncV4", value: 1 });
+    const now = Date.now();
+    await db.notes.bulkPut(
+      Array.from({ length: 205 }, (_, i) => ({
+        id: `BATCH-${i}`,
+        body: `note-${i}`,
+        importance: 0 as const,
+        createdAt: now + i,
+        updatedAt: now + i,
+        deleted: 0 as const,
+        dirty: 1 as const,
+        folderId: null,
+        orderKey: null,
+        remindAt: null,
+        repeatRule: null,
+      }))
+    );
+    const { f, calls } = okFetch();
+
+    const result = await runSync("tok", f);
+
+    const syncBodies = calls
+      .filter((c) => c.url === "/api/sync")
+      .map((c) => JSON.parse(String(c.init.body)));
+    expect(syncBodies.map((body) => body.notes.length)).toEqual([100, 100, 5]);
+    expect(syncBodies.map((body) => body.since)).toEqual([0, 1000, 1000]);
+    expect(result.pushed).toBe(205);
+    expect(await db.notes.where("dirty").equals(1).count()).toBe(0);
+  });
 });
 
 describe("runSync フォルダ", () => {
